@@ -40,7 +40,8 @@ def to_provider_response(provider: Provider) -> ProviderResponse:
         scope=provider.scope,
         type=provider.type,
         is_active=provider.is_active,
-        usage=provider.usage,
+        usage_tokens=provider.usage_tokens,
+        billable_usage_tokens=provider.billable_usage_tokens,
     )
 
 
@@ -191,7 +192,7 @@ async def list_user_models_by_provider_id(
     )
     return R.success(data=ListUserModelsResponse(
         models=[
-            to_model_response_with_mapping(model_info)
+            to_model_response(model_info)
             for model_info in model_infos
         ],
     ))
@@ -205,7 +206,7 @@ async def list_all_user_models(
     model_infos = await model_repo.list_models_and_mappings(user_id)
     return R.success(data=ListUserModelsResponse(
         models=[
-            to_model_response_with_mapping(model_info)
+            to_model_response(model_info)
             for model_info in model_infos
         ],
     ))

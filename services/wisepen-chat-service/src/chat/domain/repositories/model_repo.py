@@ -71,6 +71,10 @@ class ModelRequestInfo:
     def context_window_tokens(self) -> Optional[int]:
         return self.model.context_window_tokens
 
+    @property
+    def max_output_tokens(self) -> Optional[int]:
+        return self.model.max_output_tokens
+
 class ModelRepository(ABC):
 
     @abstractmethod

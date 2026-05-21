@@ -61,12 +61,13 @@ class ChatContextAssembler:
     async def build_context_window(
         self,
         messages: List[ChatMessage],
+        prompt_budget_tokens: int,
     ) -> Tuple[List[ChatMessage], List[ChatMessage], bool]:
         """
         从后往前累加Token，构建不超过高水位预算的动态滑动窗口。若超过高水位，则触发摘要。
         """
-        high_budget = int(settings.CTX_TOKEN_LIMIT * settings.CTX_HIGH_WATERMARK_RATIO)
-        low_budget = int(settings.CTX_TOKEN_LIMIT * settings.CTX_LOW_WATERMARK_RATIO)
+        high_budget = int(prompt_budget_tokens * settings.CTX_HIGH_WATERMARK_RATIO)
+        low_budget = int(prompt_budget_tokens * settings.CTX_LOW_WATERMARK_RATIO)
 
         total_token = 0
 
@@ -74,7 +75,7 @@ class ChatContextAssembler:
         messages_keep: List[ChatMessage] = []
 
         for msg in reversed(messages):
-            total_token += msg.token_count
+            total_token += msg.token_count or 0
             if total_token <= low_budget:
                 messages_keep.insert(0, msg)  # 保留在 messages_keep
             else:

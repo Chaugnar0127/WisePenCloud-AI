@@ -26,3 +26,13 @@ class ProviderRepository(ABC):
 
     @abstractmethod
     async def remove_provider(self, provider_id: PydanticObjectId, user_id: Optional[str] = None) -> None: pass
+
+    @abstractmethod
+    async def increment_usage(
+        self,
+        provider_id: PydanticObjectId,
+        user_id: Optional[str],
+        usage_tokens: int,
+        billable_usage_tokens: int = 0,
+    ) -> None:
+        pass

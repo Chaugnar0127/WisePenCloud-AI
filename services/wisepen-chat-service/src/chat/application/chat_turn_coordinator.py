@@ -1,4 +1,5 @@
 from typing import Optional, List, Dict, Any
+from beanie import PydanticObjectId
 from fastapi import BackgroundTasks
 from common.logger import log_error, log_ok
 
@@ -6,7 +7,7 @@ from chat.core.config.app_settings import settings
 from chat.domain.entities import ChatMessage, Role
 from chat.domain.interfaces.llm import LLMProvider
 from chat.domain.interfaces.memory import MemoryProvider
-from chat.domain.repositories import SessionRepository, MessageRepository, HotContextRepository
+from chat.domain.repositories import SessionRepository, MessageRepository, HotContextRepository, ModelRepository, ProviderRepository
 from common.core.exceptions import ServiceException
 from chat.application.chat_context_assembler import ChatContextAssembler
 from chat.application.query_loop_runtime import (
@@ -17,7 +18,6 @@ from chat.application.query_loop_runtime import (
 )
 from chat.api.vercel_sse_mapper import to_vercel_sse
 from chat.application.chat_turn_finalizer import ChatTurnFinalizer
-from chat.application.model_resolver import ModelResolver
 from chat.application.skill_matcher import SkillMatcher
 from chat.application.tools.tool_registry import ToolRegistry
 from common.kafka.producer import KafkaProducerClient
@@ -38,7 +38,8 @@ class ChatTurnCoordinator:
             self,
             llm: LLMProvider,
             memory: MemoryProvider,
-            model_resolver: ModelResolver,
+            model_repo: ModelRepository,
+            provider_repo: ProviderRepository,
             session_repo: SessionRepository,
             message_repo: MessageRepository,
             hot_context_repo: HotContextRepository,
@@ -47,7 +48,7 @@ class ChatTurnCoordinator:
             skill_matcher: SkillMatcher,
     ):
         self._memory = memory
-        self._model_resolver = model_resolver
+        self._model_repo = model_repo
         self._context_assembler = ChatContextAssembler(
             message_repo=message_repo, session_repo=session_repo, hot_context_repo=hot_context_repo
         )
@@ -56,6 +57,7 @@ class ChatTurnCoordinator:
         self._turn_finalizer = ChatTurnFinalizer(
             llm=llm, memory=memory,
             message_repo=message_repo, session_repo=session_repo, hot_context_repo=hot_context_repo,
+            provider_repo=provider_repo,
             kafka_producer=kafka_producer
         )
         self._skill_matcher = skill_matcher
@@ -69,13 +71,23 @@ class ChatTurnCoordinator:
             session_id: str,
             user_query: str,
             background_tasks: BackgroundTasks,
-            model_id: Optional[int] = None,
+            model_id: PydanticObjectId,
+            provider_id: Optional[PydanticObjectId] = None,
             states: Optional[List[Dict[str, Any]]] = None,
     ):
-        model_id = model_id or settings.DEFAULT_MODEL_ID
+        # [Model Resolve] 通过仓储解析模型、映射、供应商和 API 凭证
+        resolved = await self._model_repo.resolve_model_for_chat(
+            model_id=model_id,
+            user_id=user_id,
+            provider_id=provider_id,
+        )
 
-        # [Model Resolve] 通过映射表查找首选供应商，获取实际模型名和 API 凭证
-        resolved = await self._model_resolver.resolve(model_id)
+        context_limit = resolved.context_window_tokens or settings.CTX_TOKEN_LIMIT
+        output_reserve = resolved.max_output_tokens or settings.CTX_DEFAULT_OUTPUT_RESERVE_TOKENS
+        prompt_budget_tokens = max(
+            context_limit - output_reserve,
+            settings.CTX_MIN_PROMPT_BUDGET_TOKENS,
+        )
 
         # [Retrieval - 短期记忆] 从 Redis 读取最近对话, 如果 Redis 缓存失效（Cache Miss），会自动从 MongoDB 回填最近的 N 条历史 （可配置），确保对话连贯性。
         recent_messages = await self._context_assembler.get_or_repopulate_hot_context(session_id)
@@ -89,7 +101,10 @@ class ChatTurnCoordinator:
         # 会话的历史摘要
         session_summary = await self._context_assembler.get_session_summary(session_id)
         # [Token Window] 从后往前累加 Token，超过高水位时将 messages_compress_candidates 压缩为会话的历史摘要（本轮结束时）
-        messages_keep, messages_compress_candidates, needs_compression = await self._context_assembler.build_context_window(recent_messages)
+        messages_keep, messages_compress_candidates, needs_compression = await self._context_assembler.build_context_window(
+            recent_messages,
+            prompt_budget_tokens=prompt_budget_tokens,
+        )
 
         tool_context: dict[str, Any] = {
             "session_id": session_id,
@@ -141,8 +156,8 @@ class ChatTurnCoordinator:
                 messages_for_llm,
                 tool_scope=tool_scope,
                 session_id=session_id,
-                model_name=resolved.provider_model_name,
-                model_id=model_id,
+                model_name=resolved.model_name,
+                model_id=resolved.model_id,
                 api_base=resolved.api_base_url,
                 api_key=resolved.api_key,
             ):
@@ -170,15 +185,14 @@ class ChatTurnCoordinator:
             assistant_msg = ChatMessage(
                 session_id=session_id, role=Role.ASSISTANT, content=full_response_content,
                 reasoning_content=full_reasoning_content or None,
-                model_id=model_id,
+                model_id=resolved.model_id,
             )
 
             messages_to_persist = [user_msg] + intermediate_messages + [assistant_msg]
 
             background_tasks.add_task(
                 self._turn_finalizer.persist_all,
-                user_id, session_id, model_id,
-                resolved.provider_model_name,
+                user_id, session_id, resolved,
                 messages_to_persist
             )
             background_tasks.add_task(

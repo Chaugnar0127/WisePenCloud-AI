@@ -35,7 +35,8 @@ class Provider(Document):
     type: ProviderType = Field(default=ProviderType.OPENAI_COMPATIBLE_LLM, description="供应商能力类型")
 
     is_active: bool = Field(default=True, description="是否启用")
-    usage: int = Field(default=0, description="累计用量")
+    usage_tokens: int = Field(default=0, description="累计原始 token 用量")
+    billable_usage_tokens: int = Field(default=0, description="累计可计费 token 用量")
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

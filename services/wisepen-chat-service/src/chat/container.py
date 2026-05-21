@@ -21,7 +21,6 @@ from chat.core.persistence import (
     MongoProviderRepository,
     RedisHotContext,
 )
-from chat.application.model_resolver import ModelResolver
 from chat.application.chat_turn_coordinator import ChatTurnCoordinator
 from chat.application.skill_matcher import KeywordSkillMatcher
 from chat.application.skill_cache_refresher import SkillCacheRefresher
@@ -149,14 +148,13 @@ class Container(containers.DeclarativeContainer):
         tool_providers=tool_providers,
     )
 
-    model_resolver = providers.Singleton(ModelResolver)
-
     # Application 层组件
     chat_turn_coordinator = providers.Factory(
         ChatTurnCoordinator,
         llm=llm_provider,
         memory=memory_provider,
-        model_resolver=model_resolver,
+        model_repo=model_repo,
+        provider_repo=provider_repo,
         session_repo=session_repo,
         message_repo=message_repo,
         hot_context_repo=hot_context_repo,

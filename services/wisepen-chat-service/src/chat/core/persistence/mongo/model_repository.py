@@ -185,6 +185,8 @@ class MongoModelRepository(ModelRepository):
         )
 
         now = datetime.now(timezone.utc)
+        is_preferred = False if not is_active else is_preferred
+
         if mapping is None:
             mapping = ModelProviderMapping(
                 model_id=model_id,
@@ -192,7 +194,7 @@ class MongoModelRepository(ModelRepository):
                 provider_model_name=provider_model_name,
                 owner_user_id=user_id,
                 is_preferred=is_preferred,
-                is_active=True,
+                is_active=is_active,
                 priority=0,
                 created_at=now,
                 updated_at=now,
@@ -209,8 +211,6 @@ class MongoModelRepository(ModelRepository):
 
         mapping.provider_model_name = provider_model_name
         mapping.updated_at = now
-
-        is_preferred = False if not is_active else is_preferred
 
         try:
             if is_preferred == True and mapping.is_preferred == False: # 如果设为首选且此前不是首选
@@ -314,6 +314,7 @@ class MongoModelRepository(ModelRepository):
 
         provider = await Provider.find_one(
             Provider.id == mapping.provider_id,
+            Provider.scope == self._provider_scope_for(model.owner_user_id),
             Provider.owner_user_id == model.owner_user_id,
             Provider.is_active == True,
         )

@@ -110,6 +110,33 @@ class MongoProviderRepository(ProviderRepository):
 
         await provider.delete()
 
+    async def increment_usage(
+        self,
+        provider_id: PydanticObjectId,
+        user_id: Optional[str],
+        usage_tokens: int,
+        billable_usage_tokens: int = 0,
+    ) -> None:
+        if usage_tokens <= 0 and billable_usage_tokens <= 0:
+            return
+
+        result = await Provider.get_pymongo_collection().update_one(
+            {
+                "_id": provider_id,
+                "scope": self._scope_for(user_id).value,
+                "owner_user_id": user_id,
+            },
+            {
+                "$inc": {
+                    "usage_tokens": max(usage_tokens, 0),
+                    "billable_usage_tokens": max(billable_usage_tokens, 0),
+                },
+                "$set": {"updated_at": datetime.now(timezone.utc)},
+            },
+        )
+        if result.matched_count == 0:
+            raise ServiceException(ChatErrorCode.PROVIDER_NOT_FOUND)
+
     @staticmethod
     def _scope_for(user_id: Optional[str]) -> ProviderScope:
         return ProviderScope.USER if user_id is not None else ProviderScope.SYSTEM

@@ -14,7 +14,8 @@ class ProviderResponse(BaseModel):
     scope: ProviderScope
     type: ProviderType
     is_active: bool
-    usage: int
+    usage_tokens: int
+    billable_usage_tokens: int
 
 
 class ModelProviderMappingResponse(BaseModel):
