@@ -289,8 +289,8 @@ class QueryLoopRuntime:
         tool_outputs = await self._tool_dispatcher.dispatch(invocations, tool_scope)
 
         for result in tool_outputs.results:
-
-            result = tool_result_renderer(result, tool_scope.get(result.tool_invocation.tool_name).definition)
+            tool = tool_scope.get(result.tool_invocation.tool_name)
+            result = tool_result_renderer(result, tool.definition if tool else None)
 
             yield ToolOutputAvailableEvent(
                 call_id=result.tool_call_id,

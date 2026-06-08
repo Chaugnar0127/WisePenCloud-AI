@@ -4,14 +4,13 @@ from common.logger import log_error
 
 from chat.core.config.app_settings import settings
 from chat.application.tools.core import (
-    AllowedSkillIdHook,
-    ToolBusinessError,
+    AllowedSkillIdCheck,
     ToolDefinition,
-    ToolExecutionRequest,
+    ToolExecutionError,
     ToolLLMSpec,
-    ToolExecutionStatus,
+    ToolParametersSchema,
+    ToolPolicy,
     ToolRiskLevel,
-    ToolRuntimePolicy,
 )
 from chat.domain.repositories import SkillRepository
 
@@ -43,49 +42,46 @@ class LoadSkillTool:
                     "Do NOT call speculatively. After loading, strictly follow the instructions in SKILL.md; "
                     "call load_skill_asset to open a specific reference/template only if SKILL.md says you need it."
                 ),
-                parameters_schema=parameters_schema,
+                parameters_schema=ToolParametersSchema(parameters_schema),
             ),
-            runtime_policy=ToolRuntimePolicy(
-                reserved=True,
-                ephemeral_output=True,
+            policy=ToolPolicy(
+                expose_by_default=False,
+                persist_output=False,
                 risk_level=ToolRiskLevel.MEDIUM,
                 required_context_keys=("allowed_skill_ids",),
                 timeout_seconds=5.0,
                 max_output_chars=settings.TOOL_RESULT_MAX_CHARS,
             ),
-            input_hooks=(AllowedSkillIdHook(),),
+            preflight_hooks=(AllowedSkillIdCheck(),),
         )
 
     @property
     def definition(self) -> ToolDefinition:
         return self._definition
 
-    async def execute(self, request: ToolExecutionRequest) -> str:
-        kwargs = request.invocation.input
+    async def execute(self, context: dict[str, Any], **kwargs: Any) -> str:
         skill_id = (kwargs.get("skill_id") or "").strip()
         if not skill_id:
-            raise ToolBusinessError(
-                "missing_skill_id",
-                "Missing required argument: skill_id.",
-                status=ToolExecutionStatus.INVALID_INPUT,
+            raise ToolExecutionError(
+                reason="missing_skill_id",
+                detail_reason="Missing required argument: skill_id.",
             )
 
         try:
             skill = await self._skill_repo.get_published_skill(skill_id)
         except Exception as e:
             log_error("load_skill 查询", e, skill_id=skill_id)
-            raise ToolBusinessError(
-                "skill_load_failed",
-                f"Failed to load skill '{skill_id}': {type(e).__name__}",
-                detail=str(e),
+            raise ToolExecutionError(
+                reason="skill_load_failed",
+                detail_reason=f"Failed to load skill '{skill_id}': {type(e).__name__}",
                 retryable=True,
+                metadata={"detail": str(e), "skill_id": skill_id},
             ) from e
 
         if skill is None:
-            raise ToolBusinessError(
-                "skill_not_found",
-                f"Skill '{skill_id}' not found.",
-                status=ToolExecutionStatus.INVALID_INPUT,
+            raise ToolExecutionError(
+                reason="skill_not_found",
+                detail_reason=f"Skill '{skill_id}' not found.",
                 metadata={"skill_id": skill_id},
             )
 

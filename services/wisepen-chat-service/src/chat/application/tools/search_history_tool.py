@@ -4,13 +4,12 @@ from common.logger import log_error
 
 from chat.core.config.app_settings import settings
 from chat.application.tools.core import (
-    ToolBusinessError,
     ToolDefinition,
-    ToolExecutionRequest,
+    ToolExecutionError,
     ToolLLMSpec,
+    ToolParametersSchema,
+    ToolPolicy,
     ToolRiskLevel,
-    ToolExecutionStatus,
-    ToolRuntimePolicy,
 )
 from chat.domain.repositories import MessageRepository
 
@@ -56,9 +55,11 @@ class SearchHistoricalMessagesTool:
                     "from earlier in the conversation that may not be in the current context window."
                     "NOTE that the search keyword's language should match the user's chat language; otherwise, the search may fail. If no results are found, consider switching the keyword's language."
                 ),
-                parameters_schema=parameters_schema,
+                parameters_schema=ToolParametersSchema(parameters_schema),
             ),
-            runtime_policy=ToolRuntimePolicy(
+            policy=ToolPolicy(
+                expose_by_default=True,
+                persist_output=True,
                 risk_level=ToolRiskLevel.LOW,
                 required_context_keys=("session_id",),
                 timeout_seconds=5.0,
@@ -70,24 +71,20 @@ class SearchHistoricalMessagesTool:
     def definition(self) -> ToolDefinition:
         return self._definition
 
-    async def execute(self, request: ToolExecutionRequest) -> str:
-        context = request.context
-        kwargs = request.invocation.input
+    async def execute(self, context: dict[str, Any], **kwargs: Any) -> str:
         # session_id 从系统注入的 context 读取
         session_id: Optional[str] = context.get("session_id")
         if not session_id:
-            raise ToolBusinessError(
-                "missing_session_id",
-                "Missing session_id in execution context.",
-                status=ToolExecutionStatus.DENIED,
+            raise ToolExecutionError(
+                reason="missing_session_id",
+                detail_reason="Missing session_id in execution context.",
             )
 
         keyword: str = kwargs.get("keyword", "").strip()
         if not keyword:
-            raise ToolBusinessError(
-                "missing_keyword",
-                "Missing required argument: keyword.",
-                status=ToolExecutionStatus.INVALID_INPUT,
+            raise ToolExecutionError(
+                reason="missing_keyword",
+                detail_reason="Missing required argument: keyword.",
             )
 
         start_time: Optional[datetime] = None
@@ -108,11 +105,11 @@ class SearchHistoricalMessagesTool:
                                                                        limit=limit)
         except Exception as e:
             log_error("历史消息全文检索", e, session=session_id, keyword=keyword)
-            raise ToolBusinessError(
-                "history_search_failed",
-                f"Search failed: {type(e).__name__}",
-                detail=str(e),
+            raise ToolExecutionError(
+                reason="history_search_failed",
+                detail_reason=f"Search failed: {type(e).__name__}",
                 retryable=True,
+                metadata={"detail": str(e)},
             ) from e
 
         if not results:

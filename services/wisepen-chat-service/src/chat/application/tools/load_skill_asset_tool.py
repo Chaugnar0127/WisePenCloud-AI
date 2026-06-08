@@ -4,14 +4,13 @@ from common.logger import log_error, log_fail
 
 from chat.core.config.app_settings import settings
 from chat.application.tools.core import (
-    AllowedSkillIdHook,
-    ToolBusinessError,
+    AllowedSkillIdCheck,
     ToolDefinition,
-    ToolExecutionRequest,
+    ToolExecutionError,
     ToolLLMSpec,
-    ToolExecutionStatus,
+    ToolParametersSchema,
+    ToolPolicy,
     ToolRiskLevel,
-    ToolRuntimePolicy,
 )
 from chat.domain.interfaces.skill_asset_loader import SkillAssetLoader
 from chat.domain.repositories import SkillRepository
@@ -54,49 +53,46 @@ class LoadSkillAssetTool:
                     "You must pass a path that appears in the skill's assets manifest; "
                     "do NOT invent paths. Only call when SKILL.md explicitly tells you to consult that asset."
                 ),
-                parameters_schema=parameters_schema,
+                parameters_schema=ToolParametersSchema(parameters_schema),
             ),
-            runtime_policy=ToolRuntimePolicy(
-                reserved=True,
-                ephemeral_output=True,
+            policy=ToolPolicy(
+                expose_by_default=False,
+                persist_output=False,
                 risk_level=ToolRiskLevel.MEDIUM,
                 required_context_keys=("allowed_skill_ids",),
                 timeout_seconds=8.0,
                 max_output_chars=settings.TOOL_RESULT_MAX_CHARS,
             ),
-            input_hooks=(AllowedSkillIdHook(),),
+            preflight_hooks=(AllowedSkillIdCheck(),),
         )
 
     @property
     def definition(self) -> ToolDefinition:
         return self._definition
 
-    async def execute(self, request: ToolExecutionRequest) -> str:
-        kwargs = request.invocation.input
+    async def execute(self, context: dict[str, Any], **kwargs: Any) -> str:
         skill_id = (kwargs.get("skill_id") or "").strip()
         path = (kwargs.get("path") or "").strip()
         if not skill_id or not path:
-            raise ToolBusinessError(
-                "missing_skill_asset_input",
-                "Missing required arguments: skill_id, path.",
-                status=ToolExecutionStatus.INVALID_INPUT,
+            raise ToolExecutionError(
+                reason="missing_skill_asset_input",
+                detail_reason="Missing required arguments: skill_id, path.",
             )
 
         try:
             skill = await self._skill_repo.get_published_skill(skill_id)
         except Exception as e:
             log_error("load_skill_asset 查询", e, skill_id=skill_id, path=path)
-            raise ToolBusinessError(
-                "skill_query_failed",
-                f"Failed to query skill '{skill_id}': {type(e).__name__}",
-                detail=str(e),
+            raise ToolExecutionError(
+                reason="skill_query_failed",
+                detail_reason=f"Failed to query skill '{skill_id}': {type(e).__name__}",
                 retryable=True,
+                metadata={"detail": str(e), "skill_id": skill_id, "path": path},
             ) from e
         if skill is None:
-            raise ToolBusinessError(
-                "skill_not_found",
-                f"Skill '{skill_id}' not found.",
-                status=ToolExecutionStatus.INVALID_INPUT,
+            raise ToolExecutionError(
+                reason="skill_not_found",
+                detail_reason=f"Skill '{skill_id}' not found.",
                 metadata={"skill_id": skill_id},
             )
 
@@ -109,10 +105,9 @@ class LoadSkillAssetTool:
                 skill_id=skill_id,
                 path=path,
             )
-            raise ToolBusinessError(
-                "asset_path_not_declared",
-                f"Asset path '{path}' is not declared in the assets manifest of skill '{skill_id}'.",
-                status=ToolExecutionStatus.DENIED,
+            raise ToolExecutionError(
+                reason="asset_path_not_declared",
+                detail_reason=f"Asset path '{path}' is not declared in the assets manifest of skill '{skill_id}'.",
                 metadata={
                     "skill_id": skill_id,
                     "path": path,
@@ -128,9 +123,9 @@ class LoadSkillAssetTool:
                 skill_id=skill_id,
                 path=path,
             )
-            raise ToolBusinessError(
-                "asset_object_key_missing",
-                f"Asset '{path}' of skill '{skill_id}' has no object_key registered.",
+            raise ToolExecutionError(
+                reason="asset_object_key_missing",
+                detail_reason=f"Asset '{path}' of skill '{skill_id}' has no object_key registered.",
                 metadata={"skill_id": skill_id, "path": path},
             )
 
@@ -145,12 +140,11 @@ class LoadSkillAssetTool:
                 path=path,
                 object_key=object_key,
             )
-            raise ToolBusinessError(
-                "asset_read_failed",
-                f"Failed to read asset: {type(e).__name__}",
-                detail=str(e),
+            raise ToolExecutionError(
+                reason="asset_read_failed",
+                detail_reason=f"Failed to read asset: {type(e).__name__}",
                 retryable=True,
-                metadata={"skill_id": skill_id, "path": path, "object_key": object_key},
+                metadata={"skill_id": skill_id, "path": path, "object_key": object_key, "detail": str(e)},
             ) from e
 
         # Loader 返回 bytes：资产可能是文本（.md / .py / .json）也可能是二进制（.png / .pdf / .wasm ...）
@@ -167,13 +161,12 @@ class LoadSkillAssetTool:
                 object_key=object_key,
                 bytes=len(raw),
             )
-            raise ToolBusinessError(
-                "asset_not_text",
-                (
+            raise ToolExecutionError(
+                reason="asset_not_text",
+                detail_reason=(
                     f"Asset '{path}' of skill '{skill_id}' appears to be a binary blob "
                     f"({len(raw)} bytes) and cannot be shown as text."
                 ),
-                status=ToolExecutionStatus.INVALID_INPUT,
                 metadata={"skill_id": skill_id, "path": path, "bytes": len(raw)},
             )
 
