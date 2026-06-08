@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Any
 
-from chat.application.tools.core.definition import ToolLLMSpec, ToolPolicy, ToolDefinition
+from chat.application.tools.core.definition import ToolLLMSpec, ToolDefinition
 from chat.application.tools.core.execution.result import ToolExecutionResult
 
 
@@ -22,15 +22,22 @@ class RenderToolResult:
     persisted_output_placeholder: str | None
     tool_output: Any | None
 
-def tool_result_renderer(tool_result: ToolExecutionResult, tool_definition: ToolDefinition) -> RenderToolResult:
+def tool_result_renderer(tool_result: ToolExecutionResult, tool_definition: ToolDefinition | None) -> RenderToolResult:
+    if tool_result.tool_execution_error is not None:
+        error = tool_result.tool_execution_error
+        output = f"[Tool Error] {error.reason}"
+        if error.detail_reason:
+            output = f"{output}: {error.detail_reason}"
+    else:
+        output = tool_result.tool_output
 
-    if tool_definition.policy.persist_output:
+    if tool_definition is None or tool_definition.policy.persist_output:
         persisted_output_placeholder = None
     else:
         try:
             persisted_output_placeholder = tool_definition.policy.persisted_output_placeholder_factory(
                 tool_result.tool_invocation.tool_call_arguments,
-                tool_result.tool_output,
+                output,
             )
         except Exception:
             persisted_output_placeholder = None
@@ -40,5 +47,5 @@ def tool_result_renderer(tool_result: ToolExecutionResult, tool_definition: Tool
         tool_call_id=tool_result.tool_invocation.tool_call_id,
         tool_name=tool_result.tool_invocation.tool_name,
         persisted_output_placeholder=persisted_output_placeholder,
-        tool_output=tool_result.tool_output
+        tool_output=output
     )

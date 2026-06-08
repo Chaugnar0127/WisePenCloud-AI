@@ -14,26 +14,41 @@ class ToolExecutor:
         self._tool_scope = tool_scope
 
     async def execute_one(self, invocation: ToolInvocation) -> ToolExecutionResult:
-        started_at = datetime.now(timezone.utc) # 记录起始时间
-        tool = self._tool_scope.get(invocation.tool_name) # 获取 tool
+        started_at = datetime.now(timezone.utc)
+        tool = self._tool_scope.get(invocation.tool_name)
 
         try:
             if tool is None:
                 raise ToolExecutionError(
                     reason="Tool Unavailable",
-                    detail_reason="Tool '{invocation.tool_name}' is not available in this scope.", retryable=False
+                    detail_reason=f"Tool '{invocation.tool_name}' is not available in this scope.",
+                    retryable=False,
                 )
 
-            # Preflight hook
-            for preflight_hook in [JsonSchemaCheck, RequiredContextCheck, *tool.definition.preflight_hooks]:
-                output = await preflight_hook.check(invocation, tool.definition.policy, tool.definition.llm_spec.parameters_schema, self._tool_scope.context)
+            preflight_hooks = [
+                JsonSchemaCheck(),
+                RequiredContextCheck(),
+                *tool.definition.preflight_hooks,
+            ]
+            for preflight_hook in preflight_hooks:
+                output = await preflight_hook.check(
+                    invocation,
+                    tool.definition.policy,
+                    tool.definition.llm_spec.parameters_schema,
+                    self._tool_scope.context,
+                )
                 if not output.ok:
                     raise ToolExecutionError(
                         reason="Tool Preflight Failed",
-                        detail_reason="Tool '{invocation.tool_name}' is not available in this scope.", retryable=False
+                        detail_reason=output.message,
+                        retryable=False,
                     )
 
-            output = await self._run(tool.execute(self._tool_scope.context, **invocation.tool_call_arguments), tool.definition.policy.timeout_seconds)
+            output = await self._run(
+                tool.execute(self._tool_scope.context, **invocation.tool_call_arguments),
+                timeout_seconds=tool.definition.policy.timeout_seconds,
+                tool_name=invocation.tool_name,
+            )
 
             return ToolExecutionResult(tool_invocation=invocation, tool_output=output,
                                        started_at=started_at, finished_at=datetime.now(timezone.utc),
@@ -42,9 +57,20 @@ class ToolExecutor:
             return ToolExecutionResult(tool_invocation=invocation, tool_output=None,
                                        started_at=started_at, finished_at=datetime.now(timezone.utc),
                                        tool_execution_error=tool_execution_error)
+        except Exception as exc:
+            return ToolExecutionResult(
+                tool_invocation=invocation,
+                tool_output=None,
+                started_at=started_at,
+                finished_at=datetime.now(timezone.utc),
+                tool_execution_error=ToolExecutionError(
+                    reason="Tool Execution Failed",
+                    detail_reason=str(exc),
+                    retryable=False,
+                ),
+            )
 
-
-    async def _run(self, awaitable: Any, timeout_seconds: float | None) -> Any:
+    async def _run(self, awaitable: Any, timeout_seconds: float | None, tool_name: str) -> Any:
         if timeout_seconds is None:
             return await awaitable
         try:
@@ -52,5 +78,6 @@ class ToolExecutor:
         except asyncio.TimeoutError as exc:
             raise ToolExecutionError(
                 reason="Tool Execution Timeout",
-                detail_reason="Tool '{invocation.tool_name}' timed out.", retryable=False
-            )
+                detail_reason=f"Tool '{tool_name}' timed out.",
+                retryable=False,
+            ) from exc
