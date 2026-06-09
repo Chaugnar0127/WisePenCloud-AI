@@ -58,11 +58,11 @@ async def lifespan(app: FastAPI):
     kafka_producer = container.kafka_producer()
     await kafka_producer.start()
 
-    # 启动 Skill 资产加载器
-    skill_asset_loader = container.skill_asset_loader()
-    if getattr(skill_asset_loader, "start", None) is not None:
+    # 启动 Oss File 加载器
+    oss_file_loader = container.oss_file_loader()
+    if getattr(oss_file_loader, "start", None) is not None:
         try:
-            await skill_asset_loader.start()
+            await oss_file_loader.start()
         except Exception as e:
             log_error("FileLoader 启动", e)
 
@@ -78,11 +78,11 @@ async def lifespan(app: FastAPI):
     kafka_producer = container.kafka_producer()
     await kafka_producer.stop()
 
-    # 关闭 Skill 资产加载器
-    skill_asset_loader = container.skill_asset_loader()
-    if getattr(skill_asset_loader, "stop", None) is not None:
+    # 关闭 Oss File 加载器
+    oss_file_loader = container.oss_file_loader()
+    if getattr(oss_file_loader, "stop", None) is not None:
         try:
-            await skill_asset_loader.stop()
+            await oss_file_loader.stop()
         except Exception as e:
             log_error("FileLoader 关闭", e)
     try:
