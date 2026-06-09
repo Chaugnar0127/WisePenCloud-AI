@@ -1,28 +1,8 @@
 ---
 skill_id: paper-translation
-display_name: Paper Translation
+name: paper-translation
 description: Translate academic paper fragments (English ↔ Simplified Chinese) while preserving formulas, citations, terminology, figures, tables, and references.
-version: 0.1.0
-enabled: true
-triggers:
-  - 翻译
-  - 论文翻译
-  - 学术翻译
-  - paper translation
-  - translate paper
-  - translate this paper
-  - translate the paper
-  - academic translation
-  - 帮我翻译这篇论文
-  - 帮我翻译这篇
-  - 翻译这段论文
-assets:
-  - path: references/citation-styles.md
-    kind: reference
-    description: Normalization rules for common citation styles (APA/MLA/Chicago/IEEE) when rendering citations in translation.
-  - path: templates/translation-header-template.md
-    kind: template
-    description: Header template to prepend at the top of every translation output for traceability.
+version: -1
 ---
 
 # Paper Translation Skill
