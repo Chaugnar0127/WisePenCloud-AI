@@ -1,6 +1,8 @@
 from typing import Any, Dict
 
-from common.logger import log_error
+from chat.domain.entities import Skill
+from chat.domain.interfaces import SkillAssetLoader
+from chat.service_client.resource_service_client import ResourceClient
 
 from chat.core.config.app_settings import settings
 from chat.application.tools.core import (
@@ -11,7 +13,7 @@ from chat.application.tools.core import (
     ToolPolicy,
     ToolRiskLevel,
 )
-from chat.application.tools.skill_tools.common import AllowedSkillIdCheck, build_skill_asset_output_placeholder
+from chat.application.tools.skill_tools.common import AllowedSkillIdCheck, build_skill_output_placeholder, SkillPermissionCheck
 from chat.domain.repositories import SkillRepository
 
 
@@ -21,14 +23,18 @@ class LoadSkillTool:
     skill_id 必须在 tool_context['allowed_skill_ids']（本轮 matcher 命中的白名单）中，否则拒绝加载，防止 LLM 幻觉
     """
 
-    def __init__(self, skill_repo: SkillRepository) -> None:
+    def __init__(
+        self,
+        skill_repo: SkillRepository,
+        resource_client: ResourceClient,
+    ) -> None:
         self._skill_repo = skill_repo
         parameters_schema: Dict[str, Any] = {
             "type": "object",
             "properties": {
                 "skill_id": {
                     "type": "string",
-                    "description": "The slug id of the skill to load (e.g. 'paper-translation'). Must match one of the Available Skills.",
+                    "description": "The id of the skill to load. Must match one of the Available Skills.",
                 },
             },
             "required": ["skill_id"],
@@ -39,7 +45,7 @@ class LoadSkillTool:
                 description=(
                     "Lazy-load the full SKILL.md content and assets manifest for a given skill. "
                     "Only call this when the user's request is DIRECTLY covered by one of the Available Skills listed in the system context. "
-                    "Do NOT call speculatively. After loading, strictly follow the instructions in SKILL.md; "
+                    "After loading, strictly follow the instructions in SKILL.md; "
                     "call load_skill_asset to open a specific reference/template only if SKILL.md says you need it."
                 ),
                 parameters_schema=ToolParametersSchema(parameters_schema),
@@ -50,10 +56,10 @@ class LoadSkillTool:
                 persisted_output_placeholder_factory=build_skill_output_placeholder,
                 risk_level=ToolRiskLevel.MEDIUM,
                 required_context_keys=("allowed_skill_ids",),
-                timeout_seconds=5.0,
+                timeout_seconds=8.0,
                 max_output_chars=settings.TOOL_RESULT_MAX_CHARS,
             ),
-            preflight_hooks=(AllowedSkillIdCheck(),),
+            preflight_hooks=(AllowedSkillIdCheck(), SkillPermissionCheck(resource_client)),
         )
 
     @property
@@ -62,37 +68,23 @@ class LoadSkillTool:
 
     async def execute(self, context: dict[str, Any], **kwargs: Any) -> str:
         skill_id = (kwargs.get("skill_id") or "").strip()
-        if not skill_id:
-            raise ToolExecutionError(
-                reason="missing_skill_id",
-                detail_reason="Missing required argument: skill_id.",
-            )
 
-        try:
-            skill = await self._skill_repo.get_published_skill(skill_id)
-        except Exception as e:
-            log_error("load_skill 查询", e, skill_id=skill_id)
-            raise ToolExecutionError(
-                reason="skill_load_failed",
-                detail_reason=f"Failed to load skill '{skill_id}': {type(e).__name__}",
-                retryable=True,
-                metadata={"detail": str(e), "skill_id": skill_id},
-            ) from e
-
+        skill = await self._skill_repo.get_published_skill(skill_id)
         if skill is None:
             raise ToolExecutionError(
-                reason="skill_not_found",
+                reason="Skill Not Found",
                 detail_reason=f"Skill '{skill_id}' not found.",
                 metadata={"skill_id": skill_id},
             )
 
-        # 拼接 header + SKILL.md + assets manifest 摘要
+        skill_md = await self._load_skill_md(skill)
+
         lines = [
-            f"[Loaded Skill] id={skill.skill_id} version={skill.version}",
-            f"[Display Name] {skill.display_name}",
+            f"[Loaded Skill] skill_id={skill.skill_id} version={skill.version}",
+            f"[Name] {skill.name}",
             "",
             "===== SKILL.md BEGIN =====",
-            skill.skill_md.rstrip(),
+            skill_md.rstrip(),
             "===== SKILL.md END =====",
         ]
 
@@ -105,3 +97,40 @@ class LoadSkillTool:
                 )
 
         return "\n".join(lines)
+
+    async def _load_skill_md(self, skill:Skill) -> str:
+        if skill.skill_md:
+            return skill.skill_md
+        # skill_md在首次加载时缓存
+        if not skill.skill_md_object_key:
+            raise ToolExecutionError(
+                reason="Skill.md Not Available",
+                detail_reason=f"Failed to find Skill.md of corrupted skill '{skill.skill_id}'.",
+                metadata={"skill_id": skill.skill_id},
+            )
+
+        try:
+            raw = await self._skill_asset_loader.load_by_object_key(skill.skill_md_object_key)
+        except Exception as e:
+            raise ToolExecutionError(
+                reason="Skill.md Load Failed",
+                detail_reason=f"Failed to load asset: {type(e).__name__}",
+                retryable=True,
+                metadata={"skill_id": skill.skill_id, "object_key": skill.skill_md_object_key, "detail": str(e)},
+            )
+
+        try:
+            skill_md = raw.decode("utf-8")
+        except UnicodeDecodeError as e:
+            raise ToolExecutionError(
+                reason="Skill.md Not UTF-8 Text",
+                detail_reason=(
+                    f"Skill.md of skill '{skill.skill_id}' appears not to be a "
+                    f"UTF-8 encoded text file and cannot be parsed."
+                ),
+                retryable=False,
+                metadata={"skill_id": skill.skill_id, "bytes": len(raw)},
+            ) from e
+
+        await self._skill_repo.cache_skill_md(skill.skill_id, skill_md)
+        return skill_md

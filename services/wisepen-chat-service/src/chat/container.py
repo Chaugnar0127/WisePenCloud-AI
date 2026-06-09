@@ -5,6 +5,7 @@ from typing import List
 from dependency_injector import containers, providers
 from v2.nacos import NacosNamingService
 
+from chat.consumer.skill_published_consumer import SkillPublishedConsumer
 from chat.core.config.app_settings import settings
 from chat.core.config.bootstrap_settings import bootstrap_settings
 from chat.core.providers import (
@@ -22,16 +23,17 @@ from chat.core.persistence import (
     RedisHotContext,
 )
 from chat.application.chat_turn_coordinator import ChatTurnCoordinator
-from chat.application.skill_matcher import KeywordSkillMatcher
+from chat.application.skill_matcher import DefaultSkillMatcher
 from chat.application.skill_cache_refresher import SkillCacheRefresher
 from chat.application.tools.skill_tools import LoadSkillAssetTool
 from chat.application.tools.skill_tools import LoadSkillTool
 from chat.application.tools.core import ToolRegistry
 from chat.application.tools.session_tools.search_history_tool import SearchHistoricalMessagesTool
 from chat.core.config.nacos import nacos_client_manager
-from chat.service_client import FileStorageClient
+from chat.service_client import FileStorageClient, AIAssetClient, ResourceClient
 from common.cloud.service_discovery import ServiceDiscovery
 from common.http.rpc_client import RpcClient
+from common.kafka import KafkaConsumerClient
 from common.kafka.producer import KafkaProducerClient
 
 
@@ -79,11 +81,22 @@ class Container(containers.DeclarativeContainer):
         FileStorageClient,
         rpc=rpc_client,
     )
+    ai_asset_client = providers.Singleton(
+        AIAssetClient,
+        rpc=rpc_client,
+    )
+    resource_client = providers.Singleton(
+        ResourceClient,
+        rpc=rpc_client,
+    )
 
     # Skill 子系统：
     # - SkillRepository 只读 Mongo 里的 Skill 实体
     # - SkillAssetLoader：DEV=True 用 LocalFS+OSS 回退；DEV=False 直连裸 OSS
-    skill_repo = providers.Singleton(MongoSkillRepository)
+    skill_repo = providers.Singleton(
+        MongoSkillRepository,
+        ai_asset_client=ai_asset_client
+    )
     oss_skill_asset_loader = providers.Singleton(
         OssSkillAssetLoader,
         file_storage_client=file_storage_client,
@@ -101,9 +114,9 @@ class Container(containers.DeclarativeContainer):
         )
     else:
         skill_asset_loader = oss_skill_asset_loader
-    # KeywordSkillMatcher
+    # DefaultSkillMatcher
     skill_matcher = providers.Singleton(
-        KeywordSkillMatcher,
+        DefaultSkillMatcher,
         skill_repo=skill_repo,
     )
     # SkillCacheRefresher
@@ -111,6 +124,20 @@ class Container(containers.DeclarativeContainer):
         SkillCacheRefresher,
         matcher=skill_matcher,
         ttl_seconds=settings.SKILL_CACHE_TTL_SECONDS,
+    )
+
+    skill_published_consumer_handler = providers.Singleton(
+        SkillPublishedConsumer,
+        skill_repo=skill_repo,
+        skill_cache_refresher=skill_cache_refresher,
+    )
+
+    skill_published_consumer = providers.Singleton(
+        KafkaConsumerClient,
+        bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
+        topic=settings.KAFKA_SKILL_PUBLISHED_TOPIC,
+        group_id=settings.KAFKA_SKILL_PUBLISHED_GROUP_ID,
+        handler=skill_published_consumer_handler.provided.handle,
     )
 
     kafka_producer = providers.Singleton(
@@ -128,10 +155,12 @@ class Container(containers.DeclarativeContainer):
     load_skill_tool = providers.Singleton(
         LoadSkillTool,
         skill_repo=skill_repo,
+        resource_client=resource_client,
     )
     load_skill_asset_tool = providers.Singleton(
         LoadSkillAssetTool,
         skill_repo=skill_repo,
+        resource_client=resource_client,
         skill_asset_loader=skill_asset_loader,
     )
 

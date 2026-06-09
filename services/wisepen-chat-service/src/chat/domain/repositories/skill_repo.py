@@ -6,20 +6,33 @@ from chat.domain.entities.skill import Skill, SkillMeta
 
 class SkillRepository(ABC):
     """
-    已发布 Skill 的只读 metadata 仓储接口（AI 服务侧 view）
-    本服务仅消费已发布 Skill。因此本接口无 upsert / delete / set_enabled 等方法
+    已发布 Skill 的 metadata 仓储接口
     """
 
     @abstractmethod
-    async def list_enabled_skill_metas(self) -> List[SkillMeta]:
+    async def list_skill_metas(self) -> List[SkillMeta]:
         """
-        返回所有 enabled=True 的 Skill 轻量元信息（不含 skill_md 与 assets_manifest 正文字段）
+        读取并返回全部 Skill 轻量元信息（不含 skill_md 与 assets_manifest 正文字段）
         """
         ...
 
     @abstractmethod
     async def get_published_skill(self, skill_id: str) -> Optional[Skill]:
         """
-        按 skill_id 读取完整文档（含 skill_md + assets_manifest）
+        按 skill_id 读取 Skill 完整文档并返回（含 skill_md + assets_manifest）
+        """
+        ...
+
+    @abstractmethod
+    async def upsert_published_skill(self, skill_published_message: dict) -> Optional[Skill]:
+        """
+        将 skill_published_message 写入数据库
+        """
+        ...
+
+    @abstractmethod
+    async def cache_skill_md(self, skill_id: str, skill_md: str) -> Optional[Skill]:
+        """
+        缓存 SKILL.md 正文
         """
         ...

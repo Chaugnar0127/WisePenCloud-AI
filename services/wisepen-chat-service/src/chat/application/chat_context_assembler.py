@@ -129,10 +129,11 @@ class ChatContextAssembler:
                 content=f"[Conversation Summary so far]:\n{session_summary}",
             ))
 
-        # Skill 可用清单：披露轻量 metadata，由 LLM 判断是否需要加载完整 SKILL.md。
+        # Skill 可用清单
+        # 披露轻量 metadata，由 LLM 判断是否需要加载完整 SKILL.md
         if available_skills:
             skill_lines = [
-                f'- id="{skill.skill_id}" name="{skill.display_name}": {skill.description}'
+                f'- id="{skill.skill_id}" name="{skill.name}" : {skill.description}'
                 for skill in available_skills
             ]
             skill_block = (

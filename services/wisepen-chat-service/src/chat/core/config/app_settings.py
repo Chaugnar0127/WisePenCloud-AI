@@ -41,6 +41,8 @@ class AppSettings(BaseModel):
     # Kafka 配置
     KAFKA_BOOTSTRAP_SERVERS: str
     KAFKA_TOKEN_CONSUMPTION_TOPIC: str = "wisepen-user-token-consumption-topic"
+    KAFKA_SKILL_PUBLISHED_TOPIC: str = "wisepen-ai-asset-skill-published-topic"
+    KAFKA_SKILL_PUBLISHED_GROUP_ID: str = "wisepen-chat-skill-published-group"
 
     # Redis / MongoDB / Qdrant 配置
     REDIS_URL: str

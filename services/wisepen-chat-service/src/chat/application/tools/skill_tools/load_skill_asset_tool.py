@@ -1,6 +1,8 @@
 from typing import Any, Dict
 
-from common.logger import log_error, log_fail
+from chat.application.tools.core.execution.hooks.base import ToolPreflightHook, ToolPreflightResult
+from chat.application.tools.core.llm.invocation import ToolInvocation
+from chat.service_client.resource_service_client import ResourceClient
 
 from chat.core.config.app_settings import settings
 from chat.application.tools.core import (
@@ -11,10 +13,44 @@ from chat.application.tools.core import (
     ToolPolicy,
     ToolRiskLevel,
 )
-from chat.application.tools.skill_tools.common import AllowedSkillIdCheck, build_skill_asset_output_placeholder
+from chat.application.tools.skill_tools.common import AllowedSkillIdCheck, build_skill_asset_output_placeholder, \
+    SkillPermissionCheck
 from chat.domain.interfaces.skill_asset_loader import SkillAssetLoader
 from chat.domain.repositories import SkillRepository
 
+
+class ValidSkillAssetPathCheck(ToolPreflightHook):
+    def __init__(self, skill_repo: SkillRepository) -> None:
+        self._skill_repo = skill_repo
+
+    async def check(
+            self,
+            invocation: ToolInvocation,
+            policy: ToolPolicy,
+            parameters_schema: ToolParametersSchema,
+            context: dict[str, Any],
+    ) -> ToolPreflightResult:
+        skill_id: str = invocation.tool_call_arguments.get("skill_id")
+        path: str = invocation.tool_call_arguments.get("path")
+
+        skill = await self._skill_repo.get_published_skill(skill_id)
+        if skill is None:
+            return ToolPreflightResult(ok=False,
+                                       message=f"Skill '{skill_id}' not found.")
+
+        # Manifest path 校验
+        path_to_object_key = {asset.path: asset.object_key for asset in skill.assets_manifest}
+        if path not in path_to_object_key:
+            return ToolPreflightResult(ok=False,
+                                       message=f"Asset path '{path}' is not declared for skill '{skill_id}'.")
+        else:
+            # 将 Path 转化为 ObjectKey 并存至 _skill_asset_object_key
+            skill_asset_object_key = path_to_object_key[path]
+            if not skill_asset_object_key:
+                return ToolPreflightResult(ok=False,
+                                           message=f"Failed to find asset '{path}' of corrupted skill '{skill_id}'.")
+            else:
+                return ToolPreflightResult(ok=True, metadata={"skill_asset_object_key": skill_asset_object_key})
 
 class LoadSkillAssetTool:
     """
@@ -27,8 +63,8 @@ class LoadSkillAssetTool:
         self,
         skill_repo: SkillRepository,
         skill_asset_loader: SkillAssetLoader,
+        resource_client: ResourceClient,
     ) -> None:
-        self._skill_repo = skill_repo
         self._skill_asset_loader = skill_asset_loader
         parameters_schema: Dict[str, Any] = {
             "type": "object",
@@ -64,7 +100,7 @@ class LoadSkillAssetTool:
                 timeout_seconds=8.0,
                 max_output_chars=settings.TOOL_RESULT_MAX_CHARS,
             ),
-            preflight_hooks=(AllowedSkillIdCheck(),),
+            preflight_hooks=(AllowedSkillIdCheck(), SkillPermissionCheck(resource_client), ValidSkillAssetPathCheck(skill_repo)),
         )
 
     @property
@@ -74,110 +110,36 @@ class LoadSkillAssetTool:
     async def execute(self, context: dict[str, Any], **kwargs: Any) -> str:
         skill_id = (kwargs.get("skill_id") or "").strip()
         path = (kwargs.get("path") or "").strip()
-        if not skill_id or not path:
-            raise ToolExecutionError(
-                reason="missing_skill_asset_input",
-                detail_reason="Missing required arguments: skill_id, path.",
-            )
 
-        try:
-            skill = await self._skill_repo.get_published_skill(skill_id)
-        except Exception as e:
-            log_error("load_skill_asset 查询", e, skill_id=skill_id, path=path)
-            raise ToolExecutionError(
-                reason="skill_query_failed",
-                detail_reason=f"Failed to query skill '{skill_id}': {type(e).__name__}",
-                retryable=True,
-                metadata={"detail": str(e), "skill_id": skill_id, "path": path},
-            ) from e
-        if skill is None:
-            raise ToolExecutionError(
-                reason="skill_not_found",
-                detail_reason=f"Skill '{skill_id}' not found.",
-                metadata={"skill_id": skill_id},
-            )
-
-        # Manifest 白名单校验：path 必须是 publish 时冻结在 assets_manifest 里的那些
-        path_to_object_key = {asset.path: asset.object_key for asset in skill.assets_manifest}
-        if path not in path_to_object_key:
-            log_fail(
-                "load_skill_asset path 校验",
-                "path 不在 assets_manifest 中",
-                skill_id=skill_id,
-                path=path,
-            )
-            raise ToolExecutionError(
-                reason="asset_path_not_declared",
-                detail_reason=f"Asset path '{path}' is not declared in the assets manifest of skill '{skill_id}'.",
-                metadata={
-                    "skill_id": skill_id,
-                    "path": path,
-                    "available": sorted(path_to_object_key.keys()),
-                },
-            )
-        object_key = path_to_object_key[path]
-        if not object_key:
-            # 发布侧理论上必填 object_key，出现空值说明数据异常，走降级
-            log_fail(
-                "load_skill_asset object_key 缺失",
-                "assets_manifest 条目 object_key 为空",
-                skill_id=skill_id,
-                path=path,
-            )
-            raise ToolExecutionError(
-                reason="asset_object_key_missing",
-                detail_reason=f"Asset '{path}' of skill '{skill_id}' has no object_key registered.",
-                metadata={"skill_id": skill_id, "path": path},
-            )
-
+        object_key = context["skill_asset_object_key"]
         try:
             raw = await self._skill_asset_loader.load_by_object_key(object_key)
         except Exception as e:
-            log_error(
-                "load_skill_asset 读取",
-                e,
-                skill_id=skill_id,
-                version=skill.version,
-                path=path,
-                object_key=object_key,
-            )
             raise ToolExecutionError(
-                reason="asset_read_failed",
-                detail_reason=f"Failed to read asset: {type(e).__name__}",
+                reason="Skill Asset Load Failed",
+                detail_reason=f"Failed to load skill asset: {type(e).__name__}",
                 retryable=True,
                 metadata={"skill_id": skill_id, "path": path, "object_key": object_key, "detail": str(e)},
-            ) from e
+            )
 
         # Loader 返回 bytes：资产可能是文本（.md / .py / .json）也可能是二进制（.png / .pdf / .wasm ...）
         # 在给 LLM 的边界上做 UTF-8 严格解码，拒绝不可文本化的二进制资产
         try:
             content = raw.decode("utf-8")
         except UnicodeDecodeError:
-            log_fail(
-                "load_skill_asset 解码",
-                "资产非 UTF-8 文本，无法直接返回给 LLM",
-                skill_id=skill_id,
-                version=skill.version,
-                path=path,
-                object_key=object_key,
-                bytes=len(raw),
-            )
             raise ToolExecutionError(
-                reason="asset_not_text",
+                reason="Asset Not UTF-8 Text",
                 detail_reason=(
-                    f"Asset '{path}' of skill '{skill_id}' appears to be a binary blob "
-                    f"({len(raw)} bytes) and cannot be shown as text."
+                    f"Asset '{path}' of skill '{skill_id}' appears not to be a "
+                    f"UTF-8 encoded text file and cannot be parsed."
                 ),
+                retryable=False,
                 metadata={"skill_id": skill_id, "path": path, "bytes": len(raw)},
             )
 
-        # 字符截断，防止超长资产撑爆上下文水位
-        if len(content) > settings.TOOL_RESULT_MAX_CHARS:
-            content = content[: settings.TOOL_RESULT_MAX_CHARS] + "\n...[truncated]"
-
         return (
-            f"[Loaded Asset] skill_id={skill_id} version={skill.version} path={path}\n"
-            f"===== ASSET BEGIN =====\n"
+            f"[Loaded Skill Asset] skill_id={skill_id} path={path}\n"
+            f"===== Skill Asset BEGIN =====\n"
             f"{content}\n"
-            f"===== ASSET END ====="
+            f"===== Skill Asset END ====="
         )

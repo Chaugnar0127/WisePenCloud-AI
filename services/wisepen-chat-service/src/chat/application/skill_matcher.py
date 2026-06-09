@@ -10,9 +10,7 @@ from chat.domain.repositories import SkillRepository
 
 class SkillMatcher(ABC):
     """
-    Skill 可用清单接口：返回当前请求可展示给 LLM 的 Skill 元信息。
-
-    接口名暂时保持 match 以减少调用方改动。
+    Skill 筛选器，返回当前请求可展示给 LLM 的 Skill 元信息
     """
 
     @abstractmethod
@@ -22,12 +20,9 @@ class SkillMatcher(ABC):
     def match(self, query: str) -> List[SkillMeta]: ...
 
 
-class KeywordSkillMatcher(SkillMatcher):
+class DefaultSkillMatcher(SkillMatcher):
     """
-    可用 Skill metadata 缓存。
-
-    当前策略不再按 query trigger 预筛，而是返回 enabled Skill 的轻量 metadata，
-    由 LLM 根据本轮请求自行决定是否调用 load_skill。
+    默认 Skill 筛选器
     """
 
     def __init__(self, skill_repo: SkillRepository) -> None:
@@ -37,7 +32,7 @@ class KeywordSkillMatcher(SkillMatcher):
 
     async def warmup(self) -> None:
         try:
-            metas = await self._skill_repo.list_enabled_skill_metas()
+            metas = await self._skill_repo.list_skill_metas()
         except Exception as e:
             # 捕获所有异常，保证服务可启动 / 周期刷新不炸
             # 失败时不擦除 self._cache，已有 last-good 继续服务，防止被 Mongo 抖动打回"无 Skill 能力"

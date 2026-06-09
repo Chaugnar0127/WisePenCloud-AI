@@ -62,6 +62,10 @@ async def lifespan(app: FastAPI):
     skill_cache_refresher = container.skill_cache_refresher()
     await skill_cache_refresher.start()
 
+    # 启动 Skill 发布事件 Consumer
+    skill_published_consumer = container.skill_published_consumer()
+    await skill_published_consumer.start()
+
     # 启动 Skill 资产加载器
     skill_asset_loader = container.skill_asset_loader()
     if getattr(skill_asset_loader, "start", None) is not None:
@@ -77,6 +81,10 @@ async def lifespan(app: FastAPI):
 
     # --- 关闭阶段 ---
     log_event(f"{bootstrap_settings.APP_NAME} 关闭")
+
+    # 关闭 Skill 发布事件 Consumer
+    skill_published_consumer = container.skill_published_consumer()
+    await skill_published_consumer.stop()
 
     # 关闭 Skill cache refresher
     skill_cache_refresher = container.skill_cache_refresher()
