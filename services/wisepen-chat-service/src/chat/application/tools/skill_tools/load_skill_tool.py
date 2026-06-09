@@ -11,7 +11,7 @@ from chat.application.tools.core import (
     ToolPolicy,
     ToolRiskLevel,
 )
-from chat.application.tools.skill import AllowedSkillIdCheck, build_skill_output_placeholder
+from chat.application.tools.skill_tools.common import AllowedSkillIdCheck, build_skill_asset_output_placeholder
 from chat.domain.repositories import SkillRepository
 
 

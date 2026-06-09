@@ -24,12 +24,12 @@ from chat.core.persistence import (
 from chat.application.chat_turn_coordinator import ChatTurnCoordinator
 from chat.application.skill_matcher import KeywordSkillMatcher
 from chat.application.skill_cache_refresher import SkillCacheRefresher
-from chat.application.tools.load_skill_asset_tool import LoadSkillAssetTool
-from chat.application.tools.load_skill_tool import LoadSkillTool
+from chat.application.tools.skill_tools import LoadSkillAssetTool
+from chat.application.tools.skill_tools import LoadSkillTool
 from chat.application.tools.core import ToolRegistry
-from chat.application.tools.search_history_tool import SearchHistoricalMessagesTool
-from common.clients.file_storage import FileStorageClient
+from chat.application.tools.session_tools.search_history_tool import SearchHistoricalMessagesTool
 from chat.core.config.nacos import nacos_client_manager
+from chat.service_client import FileStorageClient
 from common.cloud.service_discovery import ServiceDiscovery
 from common.http.rpc_client import RpcClient
 from common.kafka.producer import KafkaProducerClient
