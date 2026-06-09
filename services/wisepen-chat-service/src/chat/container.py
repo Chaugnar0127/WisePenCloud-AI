@@ -23,8 +23,8 @@ from chat.core.persistence import (
     RedisHotContext,
 )
 from chat.application.chat_turn_coordinator import ChatTurnCoordinator
-from chat.application.skill_matcher import DefaultSkillMatcher
-from chat.application.skill_cache_refresher import SkillCacheRefresher
+from chat.application.tools.skill_tools.utils.skill_matcher import DefaultSkillMatcher
+from chat.application.tools.skill_tools.utils.skill_cache_refresher import SkillCacheRefresher
 from chat.application.tools.skill_tools import LoadSkillAssetTool
 from chat.application.tools.skill_tools import LoadSkillTool
 from chat.application.tools.core import ToolRegistry

@@ -4,7 +4,7 @@ from typing import Any
 
 from common.logger import log_event
 
-from chat.application.skill_cache_refresher import SkillCacheRefresher
+from chat.application.tools.skill_tools.utils.skill_cache_refresher import SkillCacheRefresher
 from chat.domain.repositories import SkillRepository
 
 

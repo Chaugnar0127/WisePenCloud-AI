@@ -1,7 +1,7 @@
 from typing import Optional, List, Dict, Any
 from beanie import PydanticObjectId
 from fastapi import BackgroundTasks
-from common.logger import log_error, log_ok
+from common.logger import log_error
 
 from chat.core.config.app_settings import settings
 from chat.domain.entities import ChatMessage, Role
@@ -19,7 +19,7 @@ from chat.application.events import (
 )
 from chat.api.vercel_sse_mapper import to_vercel_sse
 from chat.application.chat_turn_finalizer import ChatTurnFinalizer
-from chat.application.skill_matcher import SkillMatcher
+from chat.application.tools.skill_tools.utils.skill_matcher import SkillMatcher
 from chat.application.tools.core import ToolRegistry
 from common.kafka.producer import KafkaProducerClient
 

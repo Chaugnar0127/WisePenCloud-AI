@@ -3,7 +3,7 @@ from typing import Optional
 
 from common.logger import log_error, log_event
 
-from chat.application.skill_matcher import SkillMatcher
+from chat.application.tools.skill_tools.utils.skill_matcher import SkillMatcher
 
 
 class SkillCacheRefresher:
