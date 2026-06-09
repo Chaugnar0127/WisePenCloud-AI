@@ -94,7 +94,7 @@ class ChatContextAssembler:
         relevant_facts: List[str],
         session_summary: Optional[str],
         states: Optional[List[Dict[str, Any]]] = None,
-        candidate_skills: Optional[List[SkillMeta]] = None,
+        available_skills: Optional[List[SkillMeta]] = None,
     ) -> List[ChatMessage]:
         """组装最终发往 LLM 的消息列表。"""
         system_prompt = """
@@ -129,22 +129,23 @@ class ChatContextAssembler:
                 content=f"[Conversation Summary so far]:\n{session_summary}",
             ))
 
-        # Skill 候选清单：受控披露，只在 matcher 命中时注入；明确限制"仅在直接相关时加载"
-        # 用 skill_id 作机器标识，description 给 LLM 做相关性判断
-        if candidate_skills:
+        # Skill 可用清单：披露轻量 metadata，由 LLM 判断是否需要加载完整 SKILL.md。
+        if available_skills:
             skill_lines = [
-                f"- id=\"{s.skill_id}\": {s.description}" for s in candidate_skills
+                f'- id="{skill.skill_id}" name="{skill.display_name}": {skill.description}'
+                for skill in available_skills
             ]
             skill_block = (
-                "[Available Skills]\n"
-                "The following skills MAY be relevant to the user's current request. "
-                "Each skill contains detailed domain instructions (SKILL.md) and possibly supporting assets.\n"
+                "[Available WisePen Skills]\n"
+                "The following skills are available in this turn as lightweight metadata. "
+                "Each skill contains detailed domain instructions in SKILL.md and may include supporting assets.\n"
                 "Strict rules:\n"
-                "1. Load a skill ONLY when it is DIRECTLY required to fulfill the current request. Do not load speculatively.\n"
-                "2. To load, call the tool `load_skill` with `skill_id` exactly as listed below.\n"
-                "3. After loading, follow the SKILL.md instructions precisely. "
-                "Use `load_skill_asset` to open a specific reference/template only if SKILL.md explicitly says to.\n"
-                "4. If none of the skills apply, simply ignore this list and answer normally.\n\n"
+                "1. If the user explicitly asks to use one of the listed skills by id or name, call `load_skill` for that skill.\n"
+                "2. Otherwise, call `load_skill` only when a listed skill is directly useful for the current request. Do not load speculatively.\n"
+                "3. To load a skill, call `load_skill` with `skill_id` exactly as listed below.\n"
+                "4. After loading, the returned SKILL.md is mandatory for the current task. Follow its Scope, Output Format, and Constraints precisely.\n"
+                "5. Call `load_skill_asset` only after loading a skill, and only if the loaded SKILL.md explicitly requires a listed asset.\n"
+                "6. If none of the skills apply, ignore this list and answer normally.\n\n"
                 "Skills:\n"
                 + "\n".join(skill_lines)
             )

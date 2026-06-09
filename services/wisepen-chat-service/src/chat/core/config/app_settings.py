@@ -90,7 +90,7 @@ class AppSettings(BaseModel):
     # GC 扫描周期（秒）
     SKILL_OSS_CACHE_GC_INTERVAL_SECONDS: int = 30 * 60
     # Matcher 每轮给 LLM 暴露的 skill 候选上限（受控披露，防 LLM 误加载）
-    SKILL_MATCH_TOP_K: int = 2
+    SKILL_MATCH_TOP_K: int = 20
     # Skill 元数据缓存 TTL（秒）。用户/Java 端发布的新 Skill 最坏需等 TTL 才被当前副本感知。
     # 过小会增加 Mongo 读压力；过大会让新 Skill 生效滞后。
     # 未来接 Kafka 事件驱动刷新后可放大此值作为兜底轮询。

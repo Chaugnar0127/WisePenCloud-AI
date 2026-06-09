@@ -4,7 +4,6 @@ from common.logger import log_error, log_fail
 
 from chat.core.config.app_settings import settings
 from chat.application.tools.core import (
-    AllowedSkillIdCheck,
     ToolDefinition,
     ToolExecutionError,
     ToolLLMSpec,
@@ -12,6 +11,7 @@ from chat.application.tools.core import (
     ToolPolicy,
     ToolRiskLevel,
 )
+from chat.application.tools.skill import AllowedSkillIdCheck, build_skill_asset_output_placeholder
 from chat.domain.interfaces.skill_asset_loader import SkillAssetLoader
 from chat.domain.repositories import SkillRepository
 
@@ -58,6 +58,7 @@ class LoadSkillAssetTool:
             policy=ToolPolicy(
                 expose_by_default=False,
                 persist_output=False,
+                persisted_output_placeholder_factory=build_skill_asset_output_placeholder,
                 risk_level=ToolRiskLevel.MEDIUM,
                 required_context_keys=("allowed_skill_ids",),
                 timeout_seconds=8.0,

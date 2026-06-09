@@ -10,9 +10,9 @@ from chat.domain.repositories import SkillRepository
 
 class SkillMatcher(ABC):
     """
-    Skill 预筛选接口：根据用户 query 返回可能相关的 Skill 元信息 shortlist。
+    Skill 可用清单接口：返回当前请求可展示给 LLM 的 Skill 元信息。
 
-    实现可以换成 embedding / 语义相似度，接口保持不变。
+    接口名暂时保持 match 以减少调用方改动。
     """
 
     @abstractmethod
@@ -24,7 +24,10 @@ class SkillMatcher(ABC):
 
 class KeywordSkillMatcher(SkillMatcher):
     """
-    最简关键词预筛：大小写无关 substring 匹配 triggers，按命中数排序取 top_k。
+    可用 Skill metadata 缓存。
+
+    当前策略不再按 query trigger 预筛，而是返回 enabled Skill 的轻量 metadata，
+    由 LLM 根据本轮请求自行决定是否调用 load_skill。
     """
 
     def __init__(self, skill_repo: SkillRepository) -> None:
@@ -42,36 +45,17 @@ class KeywordSkillMatcher(SkillMatcher):
             self._warmed = True
             return
 
-        self._cache = metas
+        self._cache = sorted(metas, key=lambda meta: meta.skill_id)
         self._warmed = True
-        log_event("Skill matcher warmup 完成", count=len(metas))
+        log_event("Skill metadata warmup 完成", count=len(metas))
 
     def match(self, query: str) -> List[SkillMeta]:
         if not self._cache:
             log_fail(
-                "Skill matcher",
-                "cache 为空，本次 match 返回空列表",
+                "Skill metadata",
+                "cache 为空，本次返回空列表",
             )
             return []
 
-        if not query:
-            return []
-
-        lowered = query.lower()
-        scored: List[tuple[int, SkillMeta]] = []
-        for meta in self._cache:
-            # 大小写无关 substring：同一 trigger 命中只记 1 分（去重）；命中数越多排名越高
-            hits = 0
-            for trig in meta.triggers:
-                if trig and trig.lower() in lowered:
-                    hits += 1
-            if hits > 0:
-                scored.append((hits, meta))
-
-        if not scored:
-            return []
-
-        # 先按命中数降序；命中数相同时按 skill_id 字典序稳定
-        scored.sort(key=lambda x: (-x[0], x[1].skill_id))
         top_k = max(1, settings.SKILL_MATCH_TOP_K)
-        return [m for _, m in scored[:top_k]]
+        return self._cache[:top_k]

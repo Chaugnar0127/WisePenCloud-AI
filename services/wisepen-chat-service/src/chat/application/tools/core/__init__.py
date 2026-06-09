@@ -45,7 +45,6 @@ from chat.application.tools.core.execution.hooks.base import (
 )
 
 from chat.application.tools.core.execution.hooks.builtin import (
-    AllowedSkillIdCheck,
     JsonSchemaCheck,
     RequiredContextCheck,
 )
@@ -85,7 +84,6 @@ __all__ = [
     "ToolDispatcher",
 
     # hooks
-    "AllowedSkillIdCheck",
     "ToolPreflightHook",
     "ToolPreflightResult",
     "JsonSchemaCheck",

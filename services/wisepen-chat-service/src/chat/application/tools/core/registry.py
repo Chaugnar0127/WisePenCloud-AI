@@ -41,7 +41,7 @@ class ToolRegistry:
         """返回全局已注册工具的 schema。
 
         该方法仅用于诊断和测试。运行期 LLM 调用必须使用 ToolScope.schemas()，
-        确保已应用当前请求的 reserved/allow/deny 过滤。
+        确保已应用当前请求的 expose/allow/deny 过滤。
         """
         return [schema_renderer(tool.definition.llm_spec) for tool in self._tools.values()]
 
