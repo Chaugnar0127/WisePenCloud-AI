@@ -109,7 +109,7 @@ class ChatTurnCoordinator:
         tool_context: dict[str, Any] = {
             "session_id": session_id,
             "user_id": user_id,
-        } 
+        }
 
         # [Skill Discovery] 返回本轮可展示给 LLM 的 Skill metadata，由 LLM 判断是否加载。
         available_skills = self._skill_matcher.match(user_query)
@@ -124,7 +124,7 @@ class ChatTurnCoordinator:
         # runtime_discovered_tools 预留给"运行时动态发现的工具"（如 Skill bundle 自带 tools），暂时留空
         # allow_tool_name_set/deny_tool_name_set 预留给未来"用户级工具偏好"接入，暂时留空
         tool_scope = self._tool_registry.derive(
-            tool_context=tool_context, 
+            tool_context=tool_context,
             runtime_discovered_tools=None,
             expose_tool_name_set=expose_tool_name_set,
             allow_tool_name_set=None,
@@ -133,7 +133,7 @@ class ChatTurnCoordinator:
 
         # [Context Construction] 将系统提示词、Mem0 检索到的事实、会话的历史摘要、前端上下文以及窗口内的明细消息组装成 LLM 所需的格式
         messages_for_llm = self._context_assembler.assemble_prompt(
-            session_id, user_query, messages_keep+messages_compress_candidates, relevant_facts, session_summary,
+            session_id, user_query, messages_compress_candidates+messages_keep, relevant_facts, session_summary,
             states=states,
             available_skills=available_skills or None,
         )
