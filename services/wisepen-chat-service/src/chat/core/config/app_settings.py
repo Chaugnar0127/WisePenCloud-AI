@@ -74,6 +74,8 @@ class AppSettings(BaseModel):
     TOOL_RESULT_MAX_CHARS: int = 4000
 
     # Skill 系统配置
+    SKILL_MATCH_TOP_K: int = 20
+
     # 内部 RPC / 服务发现 配置
     # Nacos 服务发现客户端侧负载均衡策略：weighted_random | round_robin | random
     RPC_LB_STRATEGY: Literal["weighted_random", "round_robin", "random"] = "weighted_random"

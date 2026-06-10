@@ -56,7 +56,7 @@ class AIAssetClient:
             data = await self._rpc.post(
                 self._service_name,
                 _LIST_PUBLISHED_SKILLS_META_PATH,
-                json={"resourceIds": resource_ids},
+                json={"resourceIds": sorted(resource_ids)},
             )
         except RpcError as e:
             raise e

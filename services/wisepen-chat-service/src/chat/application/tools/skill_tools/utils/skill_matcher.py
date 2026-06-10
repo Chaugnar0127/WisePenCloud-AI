@@ -26,6 +26,9 @@ class DefaultSkillMatcher(SkillMatcher):
         self._ai_asset_client = ai_asset_client
 
     async def match(self, self_selectable_skill_ids: Set[str], user_query: str) -> List[SkillMeta]:
+        if not self_selectable_skill_ids:
+            return []
+
         skill_meta_list:List[SkillMeta] = []
         try:
             skill_meta_list = await self._ai_asset_client.list_published_skills_meta(self_selectable_skill_ids)
