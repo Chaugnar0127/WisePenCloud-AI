@@ -42,7 +42,7 @@ class _StepDeltaInterpreter:
         self.reasoning_id = reasoning_id
         self.assistant_content: str = ""
         self.assistant_reasoning: str = ""
-        self.accumulators: Dict[int, ToolCallMessageAccumulator] = {}
+        self.tool_call_message_accumulators: Dict[int, ToolCallMessageAccumulator] = {}
         self._text_started: bool = False
         self._reasoning_started: bool = False
 
@@ -89,15 +89,15 @@ class _StepDeltaInterpreter:
             for tool_call_delta in delta.tool_calls:
                 # 按 index 找到对应 accumulator
                 idx = tool_call_delta.index
-                if idx not in self.accumulators:
-                    self.accumulators[idx] = ToolCallMessageAccumulator()
+                if idx not in self.tool_call_message_accumulators:
+                    self.tool_call_message_accumulators[idx] = ToolCallMessageAccumulator()
                 if tool_call_delta.id: # 累加 id（如果有）
-                    self.accumulators[idx].tool_call_id = tool_call_delta.id
+                    self.tool_call_message_accumulators[idx].tool_call_id = tool_call_delta.id
                 if tool_call_delta.function: # 累加 function（如果有）
                     if tool_call_delta.function.name: # 累加 name
-                        self.accumulators[idx].tool_name += tool_call_delta.function.name
+                        self.tool_call_message_accumulators[idx].tool_name += tool_call_delta.function.name
                     if tool_call_delta.function.arguments: # 累加 arguments
-                        self.accumulators[idx].tool_call_argument_str += tool_call_delta.function.arguments
+                        self.tool_call_message_accumulators[idx].tool_call_argument_str += tool_call_delta.function.arguments
         # tool_call 只有在一整轮模型输出结束后，才能确定是不是完整、能不能解析
 
     def close(self) -> Iterator[StreamEvent]:
@@ -164,8 +164,8 @@ class QueryLoopRuntime:
                 messages.extend(step_finish_event.intermediate_messages)
         else:
             # 超出最大迭代次数时兜底
-            async for ev in self._emit_exhausted_warning(session_id):
-                yield ev
+            async for event in self._emit_exhausted_warning(session_id):
+                yield event
 
     """
     Agent Step：发起一次流式推理 → 解析 → 若需要则执行工具
@@ -210,8 +210,8 @@ class QueryLoopRuntime:
                     finish_reason = choices[0].finish_reason or finish_reason
 
                     # 把 delta 片段交给解释器，产出 StreamEvent
-                    for ev in delta_interpreter.consume(choices[0].delta):
-                        yield ev
+                    for event in delta_interpreter.consume(choices[0].delta):
+                        yield event
         except ServiceException:
             raise  # 已经是业务异常，直接向上传播
         except Exception as e:
@@ -221,15 +221,20 @@ class QueryLoopRuntime:
             )
 
         # 关闭本轮推理的 delta 解释器
-        for ev in delta_interpreter.close():
-            yield ev
+        for event in delta_interpreter.close():
+            yield event
 
         if usage_tokens == 0:
             # 未能正确计费，需要兜底
-            usage_tokens = await self.llm.count_message_tokens(messages=messages, model_name=model_name)
+            usage_tokens = await self.llm.count_message_tokens(messages=messages, model_name=model_name, tools=tool_schemas or None)
+            output_text = delta_interpreter.assistant_content + delta_interpreter.assistant_reasoning
+            for idx in delta_interpreter.tool_call_message_accumulators.keys():
+                acc = delta_interpreter.tool_call_message_accumulators[idx]
+                output_text += acc.tool_call_id + acc.tool_name + acc.tool_call_argument_str
+            usage_tokens += await self.llm.count_tokens(text=output_text, model_name=model_name)
 
         # 如果没有工具调用，则结束这一轮（也结束整个循环）
-        if finish_reason != "tool_calls" or not delta_interpreter.accumulators:
+        if finish_reason != "tool_calls" or not delta_interpreter.tool_call_message_accumulators:
             final_message = ChatMessage(
                 session_id=session_id,
                 role=Role.ASSISTANT,
@@ -244,7 +249,7 @@ class QueryLoopRuntime:
 
         # 解析工具调用
         invocations = tool_call_parse(
-            delta_interpreter.accumulators,
+            delta_interpreter.tool_call_message_accumulators,
             query_loop_iteration=iteration,
         )
 
