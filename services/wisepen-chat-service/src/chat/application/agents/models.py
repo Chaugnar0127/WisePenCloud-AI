@@ -21,6 +21,8 @@ class AgentToolAndSkillPolicy(BaseModel):
     on_demand_skill_ids: Optional[Set[str]] = None
     # TODO:强制启用 Skill
     force_enabled_skill_ids: Optional[Set[str]] = None
+    # 匹配前Top-K
+    skill_match_top_k: Optional[int] = Field(default=20, ge=0, lt=30)
 
     @model_validator(mode="after")
     def normalize_tool_and_skill_policy(self) -> "AgentToolAndSkillPolicy":
@@ -77,6 +79,8 @@ class AgentSpec(BaseModel):
     auto_generate_title: bool = True
     # 计费组
     billing_group_id: Optional[str] = None
+    # ReAct 最大迭代轮次
+    agent_max_iterations: Optional[int] = Field(default=None, ge=1, lt=10)
 
     # 模型策略
     model_policy: AgentModelPolicy = Field(default_factory=AgentModelPolicy)

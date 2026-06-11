@@ -47,17 +47,18 @@ def build_default_agent() -> Agent:
                 enable_use_skill=True,
                 on_demand_skill_ids=None,
                 force_enabled_skill_ids=None,
+                skill_match_top_k=settings.SKILL_MATCH_TOP_K,
             ),
             memory_policy=AgentMemoryPolicy(
                 enable_chat_memory=True,
                 enable_persistence_chat_memory=True,
                 enable_chat_memory_summary=True,
-                high_watermark_ratio=settings.CHAT_MEMORY_HIGH_WATERMARK_RATIO,
-                low_watermark_ratio=settings.CHAT_MEMORY_LOW_WATERMARK_RATIO,
+                high_watermark_ratio=settings.CTX_HIGH_WATERMARK_RATIO,
+                low_watermark_ratio=settings.CTX_LOW_WATERMARK_RATIO,
                 summary_prompt=None,
                 enable_long_term_memory=True,
-                long_term_memory_limit=settings.CHAT_MEMORY_LONG_TERM_MEMORY_LIMIT,
-                long_term_memory_score_threshold=settings.CHAT_MEMORY_LONG_TERM_MEMORY_THRESHOLD,
+                long_term_memory_limit=settings.CTX_LONG_TERM_MEMORY_LIMIT,
+                long_term_memory_score_threshold=settings.CTX_LONG_TERM_MEMORY_THRESHOLD,
             )
         ),
     )

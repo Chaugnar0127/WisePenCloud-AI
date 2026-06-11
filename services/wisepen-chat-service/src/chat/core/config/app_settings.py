@@ -52,20 +52,29 @@ class AppSettings(BaseModel):
 
     # 参数配置
 
-    # Token 动态滑动窗口 + 双水位压缩
-    # 模型上下文窗口总大小（token 数），默认对齐 gpt-4o 的 128k 上下文
+    # 模型 prompt budget
+    # 默认模型上下文窗口大小，对齐 gpt-4o 的 128k 上下文
     CTX_TOKEN_LIMIT: int = 128000
-    # 模型未配置 max_output_tokens 时使用的输出预留
+    # 默认模型输出预留
     CTX_DEFAULT_OUTPUT_RESERVE_TOKENS: int = 4096
-    # 避免异常模型配置导致 prompt budget 变成 0 或负数
+    # 模型 prompt budget 下限（避免异常情况）
     CTX_MIN_PROMPT_BUDGET_TOKENS: int = 1024
-    # 高水位线（触发阈值）：上下文累计 Token 达到此比例时触发摘要压缩
+
+    # 上下文压缩
+    # 最老的 (HIGH - LOW) 比例的对话将被送去摘要
+    # 默认高水位线（触发阈值）：上下文累计 Token 达到此比例时触发摘要压缩
     CTX_HIGH_WATERMARK_RATIO: float = 0.8
-    # 低水位线（安全退役线）：切分时按 Token 保留此比例以内的最新明细。
-    # 最老的 (HIGH - LOW) 比例的 Token 对应的消息将被送去摘要
+    # 默认低水位线（安全退役线）：切分时按 Token 保留此比例以内的最新明细。
     CTX_LOW_WATERMARK_RATIO: float = 0.5
+
     # Redis 回填时从 MongoDB 拉取的历史消息条数上限
     CTX_FALLBACK_HISTORY_LIMIT: int = 20
+
+    # 长期记忆
+    # 默认长期记忆召回上限条目数
+    CTX_LONG_TERM_MEMORY_LIMIT: int = 10
+    # 默认长期记忆召回阈值
+    CTX_LONG_TERM_MEMORY_THRESHOLD: int = 0.6
 
     # Agentic ReAct 循环
     # ReAct 最大推理迭代次数，防止工具调用产生无限循环
@@ -73,7 +82,9 @@ class AppSettings(BaseModel):
     # 工具返回内容的字符截断上限（约 ~1000 token），防止超长结果撑爆后续迭代的上下文水位
     TOOL_RESULT_MAX_CHARS: int = 4000
 
-    # Skill 系统配置
+    # Skill 配置
+
+    # 默认召回数量
     SKILL_MATCH_TOP_K: int = 20
 
     # 内部 RPC / 服务发现 配置

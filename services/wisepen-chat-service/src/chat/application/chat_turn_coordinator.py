@@ -160,10 +160,14 @@ class ChatTurnCoordinator:
         if tool_and_skill_policy.enable_use_tool and tool_and_skill_policy.enable_use_skill:
             # 若用户指定了 user_defined_on_demand_skill_ids，则覆盖 agent 预设的 on_demand_skill_ids
             on_demand_skill_ids = user_defined_on_demand_skill_ids or tool_and_skill_policy.on_demand_skill_ids or set()
-            available_skills = await self._skill_matcher.match(on_demand_skill_ids, user_query)
+            # 构建 available_skills
+            available_skills = await self._skill_matcher.match(
+                on_demand_skill_ids=on_demand_skill_ids,
+                user_query=user_query,
+                skill_match_top_k=tool_and_skill_policy.skill_match_top_k,
+            )
 
         expose_tool_name_set = None
-
         if available_skills:
             expose_tool_name_set = set(_SKILL_TOOL_NAMES)
             # allowed_skill_ids 表示本轮展示给 LLM 的 Skill 白名单，工具执行前仍会校验
@@ -221,6 +225,7 @@ class ChatTurnCoordinator:
                 messages=messages_for_llm,
                 tool_scope=tool_scope,
                 session_id=session_id,
+                agent_max_iterations=agent_spec.agent_max_iterations,
                 model_name=resolved_model.model_name,
                 model_id=resolved_model.model_id,
                 api_base=resolved_model.api_base_url,

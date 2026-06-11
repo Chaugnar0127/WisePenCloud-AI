@@ -131,13 +131,14 @@ class QueryLoopRuntime:
         messages: List[ChatMessage],
         tool_scope: ToolScope,
         session_id: str,
+        agent_max_iterations: Optional[int],
         model_name: str,
         model_id: Optional[PydanticObjectId] = None,
         api_base: Optional[str] = None,
         api_key: Optional[str] = None,
     ) -> AsyncIterator[StreamEvent]:
         # 进入多轮循环
-        for iteration in range(settings.AGENT_MAX_ITERATIONS):
+        for iteration in range(agent_max_iterations or settings.AGENT_MAX_ITERATIONS):
             step_finish_event: Optional[StepFinishEvent] = None
             # 把当前 messages、模型参数 和 tool_scope 委派给 _run_single_step()
             # 然后异步消费它的产出

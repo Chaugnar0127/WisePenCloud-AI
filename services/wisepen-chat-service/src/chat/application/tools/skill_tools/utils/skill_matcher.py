@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Set
+from typing import List, Set, Optional
 
 from common.logger import log_error
 
@@ -14,7 +14,12 @@ class SkillMatcher(ABC):
     """
 
     @abstractmethod
-    async def match(self, self_selectable_skill_ids: Set[str], user_query: str) -> List[SkillMeta]: ...
+    async def match(
+            self,
+            on_demand_skill_ids: Set[str],
+            user_query: str,
+            skill_match_top_k: Optional[int] = None
+    ) -> List[SkillMeta]: ...
 
 
 class DefaultSkillMatcher(SkillMatcher):
@@ -25,15 +30,20 @@ class DefaultSkillMatcher(SkillMatcher):
     def __init__(self, ai_asset_client: AIAssetClient) -> None:
         self._ai_asset_client = ai_asset_client
 
-    async def match(self, self_selectable_skill_ids: Set[str], user_query: str) -> List[SkillMeta]:
-        if not self_selectable_skill_ids:
+    async def match(
+            self,
+            on_demand_skill_ids: Set[str],
+            user_query: str,
+            skill_match_top_k: Optional[int] = None
+    ) -> List[SkillMeta]:
+        if not on_demand_skill_ids:
             return []
 
         skill_meta_list:List[SkillMeta] = []
         try:
-            skill_meta_list = await self._ai_asset_client.list_published_skills_meta(self_selectable_skill_ids)
+            skill_meta_list = await self._ai_asset_client.list_published_skills_meta(on_demand_skill_ids)
         except Exception as e:
-            log_error("Skill metadata resolve", e, count=len(self_selectable_skill_ids))
+            log_error("Skill metadata resolve", e, count=len(on_demand_skill_ids))
 
-        top_k = max(1, settings.SKILL_MATCH_TOP_K)
+        top_k = max(1, skill_match_top_k or settings.SKILL_MATCH_TOP_K)
         return skill_meta_list[:top_k]
