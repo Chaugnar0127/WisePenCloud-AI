@@ -43,6 +43,25 @@ class LiteLLMAdapter(LLMProvider, TextCompletionProvider):
     def provider_type(self) -> ProviderType:
         return ProviderType.LITELLM_OPENAI_COMPATIBLE
 
+    def runtime_options_manifest(self) -> dict[str, Any]:
+        return {
+            "schema_version": 1,
+            "json_schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "temperature": {"type": "number", "minimum": 0, "maximum": 2},
+                    "top_p": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+                    "presence_penalty": {"type": "number", "minimum": -2, "maximum": 2},
+                    "frequency_penalty": {"type": "number", "minimum": -2, "maximum": 2},
+                    "seed": {"type": "integer"},
+                },
+            },
+            "defaults": {
+                "temperature": 0.7,
+            },
+        }
+
     @staticmethod
     def _litellm_messages_formatter(messages: List[ChatMessage]) -> List[Dict[str, Any]]:
         # LiteLLM fallback 按 OpenAI-compatible messages 投影；非 LiteLLM payload 只用可见文本降级
@@ -128,7 +147,6 @@ class LiteLLMAdapter(LLMProvider, TextCompletionProvider):
                 messages=formatted_msgs, # 消息
                 stream=True,
                 stream_options={"include_usage": True},
-                temperature=model_request.runtime_options.get("temperature", 0.7),
                 tools=tools, # 工具集
                 drop_params=True,
                 api_base=model_request.base_url or self._default_api_base,

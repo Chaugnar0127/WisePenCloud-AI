@@ -30,7 +30,6 @@ class Model(Document):
     模型配置，前端可见的模型元信息
     """
     display_name: str = Field(..., description="展示名称（如 GPT-4o）")
-    vendor: str = Field(..., description="模型厂商（如 OpenAI、Google、DeepSeek）")
 
     scope: ModelScope = Field(default=ModelScope.SYSTEM, description="模型作用域")
     owner_user_id: Optional[str] = Field(default=None, description="USER 作用域下的归属用户 ID")

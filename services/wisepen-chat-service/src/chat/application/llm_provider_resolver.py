@@ -1,4 +1,4 @@
-from chat.domain.entities.model import ModelFamily
+from chat.domain.entities.model import ModelFamily, Model
 from chat.domain.entities.provider import ProviderType
 from chat.domain.error_codes import ChatErrorCode
 from chat.domain.interfaces import LLMProvider
@@ -40,3 +40,16 @@ class LLMProviderResolver:
             return self._litellm_adapter
         # 不在这个模型搭配范围内，报错
         raise ServiceException(ChatErrorCode.MODEL_PROVIDER_TYPE_UNSUPPORTED)
+
+    def runtime_options_manifest(self, provider_type: ProviderType) -> dict:
+        if provider_type == ProviderType.ALIBABA:
+            return self._qwen_adapter.runtime_options_manifest()
+        if provider_type == ProviderType.OPENAI:
+            return self._openai_adapter.runtime_options_manifest()
+        if provider_type == ProviderType.ANTHROPIC:
+            return self._anthropic_adapter.runtime_options_manifest()
+        if provider_type == ProviderType.GOOGLE:
+            return self._gemini_adapter.runtime_options_manifest()
+        if provider_type == ProviderType.LITELLM_OPENAI_COMPATIBLE:
+            return self._litellm_adapter.runtime_options_manifest()
+        return LLMProvider.empty_runtime_options_manifest()

@@ -24,6 +24,28 @@ class QwenAdapter(LLMProvider):
     def provider_type(self) -> ProviderType:
         return ProviderType.ALIBABA
 
+    def runtime_options_manifest(self) -> dict[str, Any]:
+        return {
+            "schema_version": 1,
+            "json_schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "temperature": {"type": "number", "minimum": 0, "exclusiveMaximum": 2},
+                    "top_p": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+                    "top_k": {"type": "integer", "minimum": 0},
+                    "enable_thinking": {"type": "boolean"},
+                    "thinking_budget": {"type": "integer", "minimum": 0},
+                    "presence_penalty": {"type": "number", "minimum": -2, "maximum": 2},
+                    "repetition_penalty": {"type": "number", "minimum": 0},
+                    "seed": {"type": "integer"},
+                },
+            },
+            "defaults": {
+                "temperature": 0.7,
+            },
+        }
+
     async def stream_chat_completion(
         self,
         messages: List[ChatMessage],
@@ -42,14 +64,8 @@ class QwenAdapter(LLMProvider):
             "stream": True,
             "incremental_output": True,
             "tools": tools, # Qwen function calling 使用 OpenAI-compatible tools schema，无需转换
+            **model_request.runtime_options
         }
-
-        # 额外参数
-        enable_thinking = model_request.runtime_options.get("enable_thinking", {})
-        if enable_thinking is not None:
-            request_kwargs["enable_thinking"] = enable_thinking
-        else:
-            request_kwargs["temperature"] = model_request.runtime_options.get("temperature", 0.7)
 
         assistant_text = ""
         reasoning_text = ""
@@ -127,7 +143,7 @@ class QwenAdapter(LLMProvider):
         result = []
         for msg in messages:
             # 只回放 Qwen 自己保存的 assistant 原生消息，其他 provider payload 只能降级为可见文本
-            if msg.role == Role.ASSISTANT and msg.model_info.provider_type == ProviderType.QWEN and msg.provider_payload:
+            if msg.role == Role.ASSISTANT and msg.model_info.provider_type == ProviderType.ALIBABA and msg.provider_payload:
                 result.append(msg.provider_payload["message"])
                 continue
             if msg.role == Role.TOOL:

@@ -39,6 +39,18 @@ class LLMStreamEvent:
     response_id: str | None = None
 
 class LLMProvider(ABC):
+    @staticmethod
+    def empty_runtime_options_manifest() -> dict[str, Any]:
+        return {
+            "schema_version": 1,
+            "json_schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {},
+            },
+            "defaults": {},
+        }
+
     @property
     @abstractmethod
     def provider_type(self) -> ProviderType:
@@ -46,6 +58,9 @@ class LLMProvider(ABC):
 
     def supports_tools(self) -> bool:
         return True
+
+    def runtime_options_manifest(self) -> dict[str, Any]:
+        return self.empty_runtime_options_manifest()
 
     @abstractmethod
     async def stream_chat_completion(

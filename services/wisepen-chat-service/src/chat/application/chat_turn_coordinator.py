@@ -114,7 +114,7 @@ class ChatTurnCoordinator:
             model_id=model_id,
             user_id=user_id,
             provider_id=provider_id,
-            runtime_options=runtime_options
+            runtime_options=runtime_options or {}
         )
 
         # Token窗口尺寸

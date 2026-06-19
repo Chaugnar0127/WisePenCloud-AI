@@ -58,10 +58,6 @@ class ModelRequestInfo:
         return self.model.owner_user_id
 
     @property
-    def is_byok(self) -> bool:
-        return self.model.scope == ModelScope.USER
-
-    @property
     def billing_ratio(self) -> int:
         return self.model.billing_ratio
 
@@ -131,6 +127,6 @@ class ModelRepository(ABC):
             user_id: Optional[str] = None,
             provider_id: Optional[PydanticObjectId] = None,
             scope = None,
-            runtime_options: dict = None,
+            runtime_options: Optional[dict[str, Any]] = None,
     ) -> ModelRequestInfo:
         pass

@@ -21,6 +21,8 @@ from chat.api.schemas.model import (
     UpdateUserProviderRequest,
 )
 from chat.container import Container
+from chat.application.llm_provider_resolver import LLMProviderResolver
+from chat.domain.entities import ModelScope
 from chat.domain.entities.model import Model, ModelProviderMapping
 from chat.domain.entities.provider import Provider
 from chat.domain.repositories import ModelRepository, ProviderRepository
@@ -37,7 +39,6 @@ def to_provider_response(provider: Provider) -> ProviderResponse:
         name=provider.name,
         base_url=provider.base_url,
         api_key_fingerprint=provider.api_key_fingerprint,
-        support_runtime_options={},
         scope=provider.scope,
         type=provider.type,
         is_active=provider.is_active,
@@ -49,13 +50,15 @@ def to_provider_response(provider: Provider) -> ProviderResponse:
 def to_mapping_response(
     mapping: ModelProviderMapping,
     provider: Provider | None,
+    llm_provider_resolver: LLMProviderResolver,
 ) -> ModelProviderMappingResponse:
+    # 系统提供者不能显示提供者名称
     return ModelProviderMappingResponse(
         model_id=str(mapping.model_id),
         provider_id=str(mapping.provider_id),
-        provider_name=provider.name if provider is not None else None,
+        provider_name=provider.name if provider is not None and provider.scope is not ModelScope.SYSTEM else None,
         provider_model_name=mapping.provider_model_name,
-        support_runtime_options={},
+        support_runtime_options=llm_provider_resolver.runtime_options_manifest(provider.type) if provider else {},
         is_preferred=mapping.is_preferred,
         is_active=mapping.is_active,
         priority=mapping.priority,
@@ -68,7 +71,6 @@ def to_model_response(
         id=str(model.id) if model.id else "",
         scope=model.scope,
         display_name=model.display_name,
-        vendor=model.vendor,
         type=model.type,
         model_family=model.model_family,
         billing_ratio=model.billing_ratio,
@@ -84,10 +86,15 @@ def to_model_response(
 def to_model_response_with_mapping(
     model_info: ModelInfo,
     providers: Dict[str, Provider] | None,
+    llm_provider_resolver: LLMProviderResolver,
 ) -> ModelResponse:
     model_response = to_model_response(model_info.model)
     model_response.mappings = [
-        to_mapping_response(mapping, providers.get(str(mapping.provider_id), None))
+        to_mapping_response(
+            mapping=mapping,
+            provider=providers.get(str(mapping.provider_id), None),
+            llm_provider_resolver=llm_provider_resolver,
+        )
         for mapping in model_info.mappings
     ]
     return model_response
@@ -99,8 +106,15 @@ async def list_available_models(
     user_id: str = Depends(require_login),
     model_repo: ModelRepository = Depends(Provide[Container.model_repo]),
     provider_repo: ProviderRepository = Depends(Provide[Container.provider_repo]),
+    llm_provider_resolver: LLMProviderResolver = Depends(Provide[Container.llm_provider_resolver]),
 ):
     system_model_infos = await model_repo.list_models_and_mappings(None)
+    system_providers = await provider_repo.list_providers(None)
+    system_providers = {
+        str(provider.id): provider
+        for provider in system_providers
+        if provider.id is not None
+    }
 
     user_model_infos = await model_repo.list_models_and_mappings(user_id)
     user_providers = await provider_repo.list_providers(user_id)
@@ -112,12 +126,12 @@ async def list_available_models(
 
     return R.success(data=AvailableModelsResponse(
         system_models=[
-            to_model_response_with_mapping(model_info, None)
+            to_model_response_with_mapping(model_info, system_providers, llm_provider_resolver)
             for model_info in system_model_infos
             if model_info.model.is_active
         ],
         user_models=[
-            to_model_response_with_mapping(model_info, user_providers)
+            to_model_response_with_mapping(model_info, user_providers, llm_provider_resolver)
             for model_info in user_model_infos
             if model_info.model.is_active
         ],
@@ -223,7 +237,6 @@ async def create_user_model(
     await model_repo.create_model(
         Model(
             display_name=req.display_name,
-            vendor=req.vendor,
             type=req.type,
             model_family=req.model_family,
             billing_ratio=req.billing_ratio,

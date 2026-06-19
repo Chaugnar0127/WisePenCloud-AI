@@ -13,7 +13,6 @@ class ProviderResponse(BaseModel):
     api_key_fingerprint: Optional[str] = None
     scope: ProviderScope
     type: ProviderType
-    support_runtime_options: Dict = Field(default_factory=dict)
     is_active: bool
     token_usage: int
     billable_token_usage: int
@@ -34,7 +33,6 @@ class ModelResponse(BaseModel):
     id: str
     scope: ModelScope
     display_name: str
-    vendor: str
     type: ModelType
     model_family: ModelFamily
     billing_ratio: int
@@ -82,7 +80,6 @@ class DeleteUserProviderRequest(BaseModel):
 
 class CreateUserModelRequest(BaseModel):
     display_name: str
-    vendor: str
     type: ModelType = ModelType.CUSTOM_MODEL
     model_family: ModelFamily = ModelFamily.GENERIC
     billing_ratio: int = 1
@@ -96,7 +93,6 @@ class CreateUserModelRequest(BaseModel):
 class UpdateUserModelRequest(BaseModel):
     model_id: str
     display_name: Optional[str] = None
-    vendor: Optional[str] = None
     type: Optional[ModelType] = None
     model_family: Optional[ModelFamily] = None
     billing_ratio: Optional[int] = None

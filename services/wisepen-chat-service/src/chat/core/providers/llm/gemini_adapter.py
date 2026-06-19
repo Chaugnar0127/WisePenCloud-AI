@@ -25,6 +25,34 @@ class GeminiAdapter(LLMProvider):
     def provider_type(self) -> ProviderType:
         return ProviderType.GOOGLE
 
+    def runtime_options_manifest(self) -> dict[str, Any]:
+        return {
+            "schema_version": 1,
+            "json_schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "temperature": {"type": "number", "minimum": 0, "maximum": 2},
+                    "top_p": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+                    "top_k": {"type": "integer", "minimum": 0},
+                    "seed": {"type": "integer"},
+                    "presence_penalty": {"type": "number"},
+                    "frequency_penalty": {"type": "number"},
+                    "thinking_config": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "thinking_budget": {"type": "integer"},
+                            "thinking_level": {"type": "string", "enum": ["MINIMAL", "LOW", "MEDIUM", "HIGH"]},
+                        },
+                    },
+                },
+            },
+            "defaults": {
+                "temperature": 0.7,
+            },
+        }
+
     async def stream_chat_completion(
         self,
         messages: List[ChatMessage],
@@ -42,19 +70,9 @@ class GeminiAdapter(LLMProvider):
 
         # 设置请求参数
         config_kwargs: dict[str, Any] = {
-            "temperature": model_request.runtime_options.get("temperature", 0.7), # 温度
             "tools": self._gemini_tools_formatter(tools), # 工具集
+            **model_request.runtime_options
         }
-
-        # 额外参数
-        thinking_config = model_request.runtime_options.get("thinking_config", {})
-        # 默认启用 thinking
-        thinking_config_kwargs = {"include_thoughts": thinking_config.get("include_thoughts", True)}
-        if thinking_config.get("thinking_budget") is not None:
-            thinking_config_kwargs["thinking_budget"] = thinking_config.get("thinking_budget")
-        if thinking_config.get("level"):
-            thinking_config_kwargs["thinking_level"] = thinking_config.get("thinking_level")
-        config_kwargs["thinking_config"] = types.ThinkingConfig(**thinking_config_kwargs)
 
         accumulated_parts: list[Any] = [] # 积累消息
         final_usage: Any = None
@@ -119,7 +137,7 @@ class GeminiAdapter(LLMProvider):
                 contents.append({"role": "user", "parts": [{"text": msg.content or ""}]})
                 continue
             # 如果当前消息是 GEMINI 提供的，且存在 provider_payload，则直接取出
-            if msg.role == Role.ASSISTANT and msg.model_info.provider_type == ProviderType.GEMINI and msg.provider_payload:
+            if msg.role == Role.ASSISTANT and msg.model_info.provider_type == ProviderType.GOOGLE and msg.provider_payload:
                 contents.append({
                     "role": "model",
                     "parts": msg.provider_payload["content"]

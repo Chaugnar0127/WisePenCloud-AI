@@ -2,6 +2,8 @@ import json
 import uuid
 from typing import AsyncIterator, Iterator, List, Optional, Union
 
+from jsonschema import Draft202012Validator
+
 from chat.application.events import (
     ReasoningDeltaEvent,
     ReasoningEndEvent,
@@ -24,10 +26,10 @@ from chat.application.tools.core.llm.invocation import ToolInvocation
 from chat.application.tools.core.llm.renderer import tool_result_renderer
 from chat.core.config.app_settings import settings
 from chat.domain.entities import ChatMessage, Role
+from chat.domain.entities.message import MessageModelInfo, ToolCallMessage
 from chat.domain.error_codes import ChatErrorCode
 from chat.domain.interfaces import LLMProvider
 from chat.domain.interfaces.llm import LLMEventType, LLMStreamEvent
-from chat.domain.entities.message import ToolCallMessage
 from chat.domain.repositories.model_repo import ModelRequestInfo
 from common.core.exceptions import ServiceException
 from common.logger import warn
@@ -139,6 +141,11 @@ class QueryLoopRuntime:
         # 解析获取当前模型的 LLMProvider
         llm_provider = self._llm_provider_resolver.resolve(model_info)
 
+        # 检查模型参数是否正确
+        schema = llm_provider.runtime_options_manifest()["json_schema"]
+        Draft202012Validator.check_schema(schema)
+        Draft202012Validator(schema).validate(model_info.runtime_options)
+
         # 进入多轮循环
         for iteration in range(agent_max_iterations or settings.AGENT_MAX_ITERATIONS):
             step_finish_event: Optional[StepFinishEvent] = None
@@ -188,7 +195,7 @@ class QueryLoopRuntime:
 
         # schema 已由 ToolScope 在构造期固化；仅在模型和 LLM Provider 均声明支持工具时传给 LLM
         tool_schemas = tool_scope.schemas() \
-            if model_info.support_tools and llm_provider.supports_tools(model_info) else []
+            if model_info.support_tools and llm_provider.supports_tools() else []
 
         token_usage = 0
         try:
@@ -219,7 +226,7 @@ class QueryLoopRuntime:
         assistant_msg = ChatMessage(
             session_id=session_id,
             role=Role.ASSISTANT,
-            model_info=model_info,
+            model_info=MessageModelInfo.from_model_request(model_info),
             content=event_interpreter.assistant_content or "",
             reasoning_content=event_interpreter.assistant_reasoning or None,
             provider_payload=event_interpreter.provider_payload, # 原生载荷

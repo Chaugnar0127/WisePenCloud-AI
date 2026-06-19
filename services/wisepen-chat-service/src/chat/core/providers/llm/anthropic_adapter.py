@@ -1,5 +1,6 @@
 import uuid
 from typing import Any, AsyncGenerator, Dict, List, Optional
+from jsonschema import Draft202012Validator
 
 from anthropic import AsyncAnthropic
 
@@ -25,6 +26,28 @@ class AnthropicAdapter(LLMProvider):
     def provider_type(self) -> ProviderType:
         return ProviderType.ANTHROPIC
 
+    def runtime_options_manifest(self) -> dict[str, Any]:
+        return {
+            "schema_version": 1,
+            "json_schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "thinking": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "type": {"type": "string", "enum": ["enabled", "disabled"]},
+                            "budget_tokens": {"type": "integer", "minimum": 1024},
+                        },
+                    },
+                },
+            },
+            "defaults": {
+                "thinking": {"type": "enabled"},
+            },
+        }
+
     async def stream_chat_completion(
         self,
         messages: List[ChatMessage],
@@ -48,19 +71,10 @@ class AnthropicAdapter(LLMProvider):
             "messages": anthropic_messages,      # 消息
             "max_tokens": model_request.model.max_output_tokens or settings.CTX_DEFAULT_OUTPUT_RESERVE_TOKENS, # 最大Tokens
             "tools": self._anthropic_tools_formatter(tools), # 工具集
+            **model_request.runtime_options
         }
         if anthropic_system_message: # system prompt
             request_kwargs["system"] = anthropic_system_message
-
-        # 额外参数
-        thinking = model_request.runtime_options.get("thinking", {"type": "enabled"})
-        # 默认启用 thinking
-        if thinking.get("type") == 'enabled':
-            request_kwargs["thinking"] = {"type": "enabled"}
-            if model_request.runtime_options.get("thinking", {}).get("budget_tokens") is not None:
-                request_kwargs["thinking_budget"] = model_request.runtime_options.get("thinking", {}).get("budget_tokens")
-        elif model_request.runtime_options.get("temperature"): # 否则传递 temperature 参数（若存在）
-            request_kwargs["temperature"] = model_request.runtime_options.get("temperature", 1)
 
         try:
             async with client.messages.stream(**without_none(request_kwargs)) as stream:

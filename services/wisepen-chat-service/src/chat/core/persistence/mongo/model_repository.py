@@ -108,8 +108,6 @@ class MongoModelRepository(ModelRepository):
 
         if "display_name" in updates:
             model.display_name = updates["display_name"]
-        if "vendor" in updates:
-            model.vendor = updates["vendor"]
         if "type" in updates:
             model.type = updates["type"]
         if "model_family" in updates:
@@ -288,12 +286,14 @@ class MongoModelRepository(ModelRepository):
         user_id: Optional[str] = None,
         provider_id: Optional[PydanticObjectId] = None,
         scope: Optional[ModelScope] = None,
-        runtime_options: dict = {}
+        runtime_options: Optional[dict[str, Any]] = None
     ) -> ModelRequestInfo:
+        runtime_options = runtime_options or {}
         model = await self._find_chat_model(model_id, user_id, scope)
         if model is None:
             raise ServiceException(ChatErrorCode.MODEL_NOT_FOUND)
 
+        mapping: ModelProviderMapping | None = None
         if provider_id is not None:
             mapping = await ModelProviderMapping.find_one(
                 ModelProviderMapping.model_id == model.id,
