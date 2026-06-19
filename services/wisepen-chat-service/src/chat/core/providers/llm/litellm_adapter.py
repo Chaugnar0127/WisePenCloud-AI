@@ -41,7 +41,7 @@ class LiteLLMAdapter(LLMProvider, TextCompletionProvider):
 
     @property
     def provider_type(self) -> ProviderType:
-        return ProviderType.LITELLM
+        return ProviderType.LITELLM_OPENAI_COMPATIBLE
 
     @staticmethod
     def _litellm_messages_formatter(messages: List[ChatMessage]) -> List[Dict[str, Any]]:
@@ -49,7 +49,7 @@ class LiteLLMAdapter(LLMProvider, TextCompletionProvider):
         formatted_messages = []
         for message in messages:
             # 只回放 LiteLLM 自己保存的 assistant 原生消息，其他 provider payload 只能降级为可见文本
-            if message.role == Role.ASSISTANT and message.model_request.provider_type == ProviderType.LITELLM and message.provider_payload:
+            if message.role == Role.ASSISTANT and message.model_info.provider_type == ProviderType.LITELLM_OPENAI_COMPATIBLE and message.provider_payload:
                 formatted_messages.append(message.provider_payload["message"])
                 continue
             if message.role == Role.TOOL:
@@ -57,7 +57,7 @@ class LiteLLMAdapter(LLMProvider, TextCompletionProvider):
                 formatted_messages.append({
                     "role": "tool",
                     "tool_call_id": message.tool_call_id,
-                    "name": message.name,
+                    "name": message.tool_name,
                     "content": message.content or "",
                 })
                 continue
@@ -118,8 +118,6 @@ class LiteLLMAdapter(LLMProvider, TextCompletionProvider):
         formatted_msgs = self._litellm_messages_formatter(messages)
         litellm_model = self._to_openai_compatible_model(model_request.model_name)
 
-        provider_options = model_request.provider.options or {}
-
         # 设置请求参数
         # LiteLLM 作为 fallback 路径，tools 继续透传 OpenAI-compatible schema
         token_usage = 0
@@ -135,7 +133,7 @@ class LiteLLMAdapter(LLMProvider, TextCompletionProvider):
                 drop_params=True,
                 api_base=model_request.base_url or self._default_api_base,
                 api_key=model_request.api_key or self._default_api_key,
-                **provider_options,
+                **model_request.runtime_options,
             )
             stream = cast(AsyncIterable[Any], response)
             assistant_text = ""

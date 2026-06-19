@@ -6,7 +6,7 @@ from chat.domain.error_codes import ChatErrorCode
 from common.core.exceptions import ServiceException
 from common.logger import debug, warn
 
-from chat.domain.entities import ChatMessage
+from chat.domain.entities import ChatMessage, Role
 from chat.domain.interfaces import MemoryProvider
 from chat.core.config.app_settings import settings
 
@@ -89,13 +89,16 @@ class Mem0Adapter(MemoryProvider):
 
     async def add_interaction(self, user_id: str, messages: List[ChatMessage]):
         """
-        将对话存入长期记忆（Mem0 + Qdrant 向量化）。
+        将对话存入长期记忆（Mem0 + Qdrant 向量化）
         """
         # Mem0 需要的是 [{"role": "user", "content": "..."}, ...] 格式
-        formatted_msgs = [
-            {"role": msg.role.value, "content": msg.content}
-            for msg in messages
-        ]
+        formatted_msgs = []
+        for message in messages:
+            # 只有 Role.USER Message 才应存入长期记忆
+            if message.role == Role.USER:
+                formatted_msgs.append({
+                    "role": message.role.value, "content": message.content
+                })
 
         def _sync_add():
             try:

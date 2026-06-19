@@ -48,10 +48,8 @@ def to_provider_response(provider: Provider) -> ProviderResponse:
 
 def to_mapping_response(
     mapping: ModelProviderMapping,
-    providers: Dict[str, Provider] = None,
+    provider: Provider | None,
 ) -> ModelProviderMappingResponse:
-    providers = providers or {}
-    provider:Provider = providers.get(str(mapping.provider_id), None)
     return ModelProviderMappingResponse(
         model_id=str(mapping.model_id),
         provider_id=str(mapping.provider_id),
@@ -85,11 +83,11 @@ def to_model_response(
 
 def to_model_response_with_mapping(
     model_info: ModelInfo,
-    providers: Dict[str, Provider] = None,
+    providers: Dict[str, Provider] | None,
 ) -> ModelResponse:
     model_response = to_model_response(model_info.model)
     model_response.mappings = [
-        to_mapping_response(mapping, providers)
+        to_mapping_response(mapping, providers.get(str(mapping.provider_id), None))
         for mapping in model_info.mappings
     ]
     return model_response
@@ -114,7 +112,7 @@ async def list_available_models(
 
     return R.success(data=AvailableModelsResponse(
         system_models=[
-            to_model_response_with_mapping(model_info)
+            to_model_response_with_mapping(model_info, None)
             for model_info in system_model_infos
             if model_info.model.is_active
         ],
@@ -151,7 +149,6 @@ async def create_user_provider(
             base_url=req.base_url,
             api_key=req.api_key,
             type=req.type,
-            options=req.options,
             is_active=req.is_active,
         )
     , user_id)
@@ -196,7 +193,7 @@ async def list_user_models_by_provider_id(
     )
     return R.success(data=ListUserModelsResponse(
         models=[
-            to_model_response(model_info)
+            to_model_response(model_info.model)
             for model_info in model_infos
         ],
     ))
@@ -210,7 +207,7 @@ async def list_all_user_models(
     model_infos = await model_repo.list_models_and_mappings(user_id)
     return R.success(data=ListUserModelsResponse(
         models=[
-            to_model_response(model_info)
+            to_model_response(model_info.model)
             for model_info in model_infos
         ],
     ))

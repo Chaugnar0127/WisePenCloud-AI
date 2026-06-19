@@ -124,7 +124,7 @@ class OpenAIAdapter(LLMProvider):
         last_response_index = next((
             i
             for i in range(len(messages) - 1, -1, -1)
-            if messages[i].provider_type == ProviderType.OPENAI and messages[i].provider_payload['response_id']
+            if messages[i].model_info.provider_type == ProviderType.OPENAI and messages[i].provider_payload['response_id']
         ), -1) # 从后往前找最近一条 provider_type == OPENAI 并且 response_id 存在的消息
 
         # 如果找到 response_id，优先构造 continuation input
