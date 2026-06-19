@@ -1,6 +1,6 @@
 from enum import Enum
 import jieba
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from datetime import datetime, timezone
 from copy import deepcopy
 from beanie import Document
@@ -9,7 +9,9 @@ from pymongo import IndexModel, ASCENDING
 
 from chat.domain.entities.model import ModelFamily, ModelScope
 from chat.domain.entities.provider import ProviderType
-from chat.domain.repositories.model_repo import ModelRequestInfo
+
+if TYPE_CHECKING:
+    from chat.domain.repositories.model_repo import ModelRequestInfo
 
 
 class Role(str, Enum):
@@ -39,7 +41,7 @@ class MessageModelInfo(BaseModel):
     runtime_options: Dict[str, Any] = Field(default_factory=dict)
 
     @classmethod
-    def from_model_request(cls, model_request: ModelRequestInfo) -> "MessageModelInfo":
+    def from_model_request(cls, model_request: "ModelRequestInfo") -> "MessageModelInfo":
         return cls(
             model_id=str(model_request.model_id),
             provider_id=str(model_request.provider_id),
