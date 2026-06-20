@@ -88,6 +88,7 @@ async def chat_completions(
         provider_id=resolved_provider_id,
         runtime_options=req.runtime_options,
         frontend_states=req.frontend_states,
+        user_defined_attachment_ids=req.user_defined_attachment_ids,
         user_defined_allow_tool_names=req.user_defined_allow_tool_names,
         user_defined_deny_tool_names=req.user_defined_deny_tool_names,
         user_defined_on_demand_skill_ids=req.user_defined_on_demand_skill_ids,

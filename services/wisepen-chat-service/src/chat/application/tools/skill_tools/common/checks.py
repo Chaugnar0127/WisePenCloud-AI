@@ -53,8 +53,7 @@ class SkillPermissionCheck(ToolPreflightHook):
         except Exception as e:
             return ToolPreflightResult(ok=False, message=f"Failed to check permission for skill '{skill_id}'.")
 
-        allowed_actions = res_check_permission_res.get("allowedActions") or []
-        if "VIEW" in allowed_actions:
+        if res_check_permission_res and res_check_permission_res.allows("VIEW"):
             return ToolPreflightResult(ok=True)
         else:
             return ToolPreflightResult(ok=False, message=f"Permission denied for skill '{skill_id}'.")

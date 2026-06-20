@@ -18,6 +18,18 @@ from common.core.exceptions import ServiceException
 
 router = APIRouter()
 
+
+@router.get("/getSession", response_model=R[SessionResponse])
+@inject
+async def get_session(
+        session_id: str,
+        user_id: str = Depends(require_login),
+        session_repo: SessionRepository = Depends(Provide[Container.session_repo]),
+):
+    session = await session_repo.get_session_for_user(session_id, user_id)
+    return R.success(data=SessionResponse.from_entity(session))
+
+
 @router.post("/createSession", response_model=R[SessionResponse], status_code=200)
 @inject
 async def create_session(
@@ -94,6 +106,7 @@ async def rename_session(
 ):
     session = await session_repo.rename_session(session_id, user_id, req.new_title or "New Chat")
     return R.success(data=SessionResponse.from_entity(session))
+
 
 @router.post("/pinSession", response_model=R[SessionResponse], status_code=200)
 @inject

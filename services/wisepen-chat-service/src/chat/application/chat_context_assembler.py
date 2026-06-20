@@ -1,10 +1,11 @@
-﻿from dataclasses import field, dataclass
+﻿import json
+from dataclasses import field, dataclass
 from typing import Any, Dict, List, Optional
 
 from common.logger import error, warn
 
 from chat.core.config.app_settings import settings
-from chat.domain.entities import ChatMessage, Role, ChatSession
+from chat.domain.entities import ChatMessage, Role, ChatSession, TemporaryAttachmentRef, ResourceAttachmentRef
 from chat.domain.entities.skill import SkillMeta
 from chat.domain.repositories import MessageRepository, HotContextRepository, SessionRepository
 
@@ -110,6 +111,9 @@ class ChatContextAssembler:
         relevant_facts: List[str],
         frontend_states: Optional[List[Dict[str, Any]]] = None,
         available_skills: Optional[List[SkillMeta]] = None,
+        temp_attachments: Optional[List[TemporaryAttachmentRef]] = None,
+        resource_attachments: Optional[List[ResourceAttachmentRef]] = None,
+        user_defined_attachment_ids: Optional[List[str]] = None,
     ) -> List[ChatMessage]:
         """组装最终发往 LLM 的消息列表"""
 
@@ -133,40 +137,69 @@ class ChatContextAssembler:
         # -- 以上消息在多轮对话中保持公共前缀，可命中缓存 --
 
         # 上下文块组装
-        context_blocks: List[str] = []
-
+        context_blocks: dict = {}
         # 如果有从 Mem0 召回的相关事实，作为补充信息拼接到 System Prompt 中
         # 若禁用长期记忆则无 relevant_facts
         if relevant_facts:
-            facts_text = "\n".join([f"- {fact}" for fact in relevant_facts])
-            context_blocks.append(
-                f"<relevant_user_memories>\n{facts_text}\n</relevant_user_memories>"
-            )
+            context_blocks['relevant_user_memories'] = relevant_facts
 
         # Skill 提示
         # 披露轻量 metadata，由 LLM 判断是否需要加载完整 SKILL.md
         if available_skills:
-            context_blocks.append(
-                f"<available_skills>\n{self._skills_block(available_skills)}\n</available_skills>"
-            )
+            context_blocks['available_skills'] = {
+                'note': "The following skills are available in this turn as lightweight metadata. "
+                        "Each skill contains detailed domain instructions in SKILL.md and may include supporting assets.\n"
+                        "Strict rules:\n"
+                        "1. If the user explicitly asks to use one of the listed skills by id or name, call `load_skill` for that skill.\n"
+                        "2. Otherwise, call `load_skill` only when a listed skill is directly useful for the current request. Do not load speculatively.\n"
+                        "3. To load a skill, call `load_skill` with `skill_id` exactly as listed below.\n"
+                        "4. After loading, the returned SKILL.md is mandatory for the current task. Follow its Scope, Output Format, and Constraints precisely.\n"
+                        "5. Call `load_skill_asset` only after loading a skill, and only if the loaded SKILL.md explicitly requires a listed asset.\n"
+                        "6. If none of the skills apply, ignore this list and answer normally.\n\n",
+                'skills': [{
+                    'id': skill.skill_id,
+                    'name': skill.name,
+                    'description': skill.description,
+                } for skill in available_skills]
+            }
 
-        # 前端上下文注入：作为独立 USER 消息插入在历史消息和用户问题之间
+        # 前端上下文
         # 从 states 里筛选出 没有被禁用、并且 有 value 值 的元素
         active_frontend_states = [state for state in (frontend_states or []) if not state.get("disabled", False) and state.get("value")]
         if active_frontend_states: # 若存在这样的元素
-            ctx_lines = [f'<context key="{state["key"]}">\n{state["value"]}\n</context>' for state in active_frontend_states]
-            context_blocks.append(
-                "<user_frontend_context>\n" + "\n".join(ctx_lines) + "\n</user_frontend_context>"
-            )
+            context_blocks['user_frontend_context'] = {}
+            for state in active_frontend_states:
+                context_blocks['user_frontend_context'][state["key"]] = state["value"]
+
+        # 附件
+        temporary_attachments = [{
+            'attachment_id': temp_attachment.attachment_id,
+            'name': temp_attachment.attachment_name,
+            'extension': temp_attachment.extension,
+            'size': temp_attachment.file_size // 1024,
+        } for temp_attachment in (temp_attachments or [])]
+        resource_attachments = [{
+            'attachment_id': resource_attachment.attachment_id,
+            'name': resource_attachment.attachment_name,
+            'resource_type': resource_attachment.resource_type,
+        } for resource_attachment in (resource_attachments or [])]
+        if temporary_attachments or resource_attachments or user_defined_attachment_ids:
+            context_blocks["session_attachments"] = {
+                "temporary_attachments": temporary_attachments,
+                "resource_attachments": resource_attachments,
+                "user_query_attachment_ids": user_defined_attachment_ids or [],
+            }
+
+        context_text = json.dumps(context_blocks, ensure_ascii=False, indent=2, default=str)
 
         # 用户最新输入的问题
-        if context_blocks:
+        if context_blocks.keys():
             final_user_content = (
                     "[Application-provided context]\n"
                     "The following context is provided by the application. "
                     "Use it as background information, but the user's actual request is in <user_query>.\n\n"
-                    + "\n\n".join(context_blocks)
-                    + f"\n\n<user_query>\n{user_query}\n</user_query>"
+                    + f"<application_context>\n{context_text}\n</application_context>\n\n"
+                    + f"<user_query>\n{user_query}\n</user_query>"
             )
         else:
             final_user_content = user_query
@@ -180,23 +213,4 @@ class ChatContextAssembler:
 
         return messages
 
-    @staticmethod
-    def _skills_block(available_skills: List[SkillMeta]) -> str:
-        skill_lines = [
-            f'- id="{skill.skill_id}" name="{skill.name}" : {skill.description}'
-            for skill in available_skills
-        ]
-        return (
-                "The following skills are available in this turn as lightweight metadata. "
-                "Each skill contains detailed domain instructions in SKILL.md and may include supporting assets.\n"
-                "Strict rules:\n"
-                "1. If the user explicitly asks to use one of the listed skills by id or name, call `load_skill` for that skill.\n"
-                "2. Otherwise, call `load_skill` only when a listed skill is directly useful for the current request. Do not load speculatively.\n"
-                "3. To load a skill, call `load_skill` with `skill_id` exactly as listed below.\n"
-                "4. After loading, the returned SKILL.md is mandatory for the current task. Follow its Scope, Output Format, and Constraints precisely.\n"
-                "5. Call `load_skill_asset` only after loading a skill, and only if the loaded SKILL.md explicitly requires a listed asset.\n"
-                "6. If none of the skills apply, ignore this list and answer normally.\n\n"
-                "Skills:\n"
-                + "\n".join(skill_lines)
-        )
 

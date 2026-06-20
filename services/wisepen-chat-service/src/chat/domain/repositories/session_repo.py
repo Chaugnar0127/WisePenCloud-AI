@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import List, Tuple
+from typing import Optional, List, Tuple
 from datetime import datetime
-from chat.domain.entities import ChatSession
+from chat.domain.entities import ChatSession, ResourceAttachmentRef, TemporaryAttachmentRef
 
 
 class SessionRepository(ABC):
@@ -15,6 +15,9 @@ class SessionRepository(ABC):
 
     @abstractmethod
     async def get_session_for_user(self, session_id: str, user_id: str) -> ChatSession: pass
+
+    @abstractmethod
+    async def get_session_attachments(self, session_id: str, user_id: str) -> Tuple[Optional[List[TemporaryAttachmentRef]], Optional[List[ResourceAttachmentRef]]]: pass
 
     @abstractmethod
     async def list_sessions_for_user(self, user_id: str, page: int, size: int) -> Tuple[List[ChatSession], int]: pass

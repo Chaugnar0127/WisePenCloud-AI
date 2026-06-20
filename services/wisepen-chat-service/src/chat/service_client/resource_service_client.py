@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-from typing import Mapping, Optional
+from typing import Mapping
 
 from common.core.domain import GroupRoleType
 from common.core.exceptions import RpcError
 from common.http.rpc_client import RpcClient
+from chat.domain.entities import ResourceItemInfo, ResourcePermission
 
 
 _DEFAULT_SERVICE_NAME = "wisepen-resource-service"
 _CHECK_RES_PERMISSION_PATH = "/internal/resource/checkResPermission"
+_GET_RESOURCE_INFO_PATH = "/internal/resource/getResourceInfo"
 
 
 class ResourceClient:
@@ -26,7 +28,7 @@ class ResourceClient:
         resource_id: str,
         user_id: str | int,
         group_role_map: Mapping[str, GroupRoleType],
-    ) -> Optional[dict]:
+    ) -> ResourcePermission:
         resource_id = (resource_id or "").strip()
         try:
             data = await self._rpc.post(
@@ -45,7 +47,35 @@ class ResourceClient:
                 service_name=self._service_name, path=_CHECK_RES_PERMISSION_PATH,
                 msg=f"unexpected data payload: {data!r}",
             )
-        return data
+        return ResourcePermission.from_response(data)
+
+    async def get_resource_info(
+        self,
+        resource_id: str,
+        user_id: str | int,
+        group_role_map: Mapping[str, GroupRoleType],
+        target_version: int | None = None,
+    ) -> ResourceItemInfo:
+        resource_id = (resource_id or "").strip()
+        try:
+            data = await self._rpc.post(
+                self._service_name,
+                _GET_RESOURCE_INFO_PATH,
+                json={
+                    "resourceId": resource_id,
+                    "userId": int(user_id),
+                    "groupRoles": self._serialize_group_roles(group_role_map),
+                    "targetVersion": target_version,
+                },
+            )
+        except RpcError as e:
+            raise e
+        if not isinstance(data, dict):
+            raise RpcError(
+                service_name=self._service_name, path=_GET_RESOURCE_INFO_PATH,
+                msg=f"unexpected data payload: {data!r}",
+            )
+        return ResourceItemInfo.from_response(data)
 
     @staticmethod
     def _serialize_group_roles(group_role_map: Mapping[str, GroupRoleType]) -> dict[str, int]:

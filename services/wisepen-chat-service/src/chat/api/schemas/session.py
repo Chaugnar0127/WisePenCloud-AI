@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Any
 
-from chat.domain.entities import ChatSession
+from chat.domain.entities import ChatSession, ResourceAttachmentRef, TemporaryAttachmentRef
 
 
 class CreateSessionRequest(BaseModel):
@@ -18,12 +18,54 @@ class PinSessionRequest(BaseModel):
     set_pin: bool = Field(default=False, description="是否置顶")
 
 
+class TemporaryAttachmentRefResponse(BaseModel):
+    attachment_id: str
+    attachment_type: str
+    attachment_name: str
+    object_key: str
+    extension: str
+    file_size: int
+    mime_type: Optional[str] = None
+
+    @classmethod
+    def from_entity(cls, ref: TemporaryAttachmentRef) -> "TemporaryAttachmentRefResponse":
+        return cls(
+            attachment_id=ref.attachment_id,
+            attachment_type=ref.attachment_type,
+            attachment_name=ref.attachment_name,
+            object_key=ref.object_key,
+            extension=ref.extension,
+            file_size=ref.file_size,
+            mime_type=ref.mime_type,
+        )
+
+
+class ResourceAttachmentRefResponse(BaseModel):
+    attachment_id: str
+    attachment_type: str
+    attachment_name: str
+    resource_id: str
+    resource_type: str
+
+    @classmethod
+    def from_entity(cls, ref: ResourceAttachmentRef) -> "ResourceAttachmentRefResponse":
+        return cls(
+            attachment_id=ref.attachment_id,
+            attachment_type=ref.attachment_type,
+            attachment_name=ref.attachment_name,
+            resource_id=ref.resource_id,
+            resource_type=ref.resource_type,
+        )
+
+
 class SessionResponse(BaseModel):
     id: str
     user_id: str
     title: str
     created_at: str
     updated_at: str
+    temporary_attachment_refs: List[TemporaryAttachmentRefResponse] = Field(default_factory=list)
+    resource_attachment_refs: List[ResourceAttachmentRefResponse] = Field(default_factory=list)
     agent_id: Optional[str] = None
     agent_version: Optional[int] = None
 
@@ -35,6 +77,16 @@ class SessionResponse(BaseModel):
             title=session.title,
             created_at=session.created_at.isoformat(),
             updated_at=session.updated_at.isoformat(),
+            temporary_attachment_refs=[
+                TemporaryAttachmentRefResponse.from_entity(a)
+                for a in session.temporary_attachment_refs
+                if not getattr(a, "deleted", False)
+            ],
+            resource_attachment_refs=[
+                ResourceAttachmentRefResponse.from_entity(r)
+                for r in session.resource_attachment_refs
+                if not getattr(r, "deleted", False)
+            ],
             agent_id=session.agent_id,
             agent_version=session.agent_version,
         )

@@ -88,6 +88,7 @@ class ChatTurnCoordinator:
             provider_id: Optional[PydanticObjectId] = None,
             runtime_options: dict = None,
             frontend_states: Optional[List[Dict[str, Any]]] = None,
+            user_defined_attachment_ids: Optional[List[str]] = None,
             user_defined_allow_tool_names: Optional[Set[str]] = None,
             user_defined_deny_tool_names: Optional[Set[str]] = None,
             user_defined_on_demand_skill_ids: Optional[Set[str]] = None,
@@ -206,6 +207,9 @@ class ChatTurnCoordinator:
             deny_tool_name_set=deny_tool_name_set,
         )
 
+        # 对话中的全部附件
+        temp_attachments, resource_attachments = await self._session_repo.get_session_attachments(session_id, user_id)
+
         # 提示词组装
         # 将系统提示词、Mem0 检索到的事实、会话的历史摘要、前端上下文以及窗口内的未压缩明细消息组装成 LLM 所需的格式
         messages_for_llm = self._context_assembler.assemble_prompt(
@@ -217,6 +221,9 @@ class ChatTurnCoordinator:
             relevant_facts=relevant_facts, # 长期记忆检索的事实
             frontend_states=frontend_states, # 用户前端状态
             available_skills=available_skills or None, # 可用技能
+            temp_attachments=temp_attachments, # 对话中的全部临时附件
+            resource_attachments=resource_attachments, # 对话中的全部资源附件
+            user_defined_attachment_ids=user_defined_attachment_ids, # 用户指定的附件
         )
 
         # 构造 chat_record_messages
@@ -225,6 +232,9 @@ class ChatTurnCoordinator:
             "relevant_facts": relevant_facts,
             "frontend_states": frontend_states or {},
             "available_skills_id": [skill.skill_id for skill in available_skills] or [],
+            "temp_attachments": temp_attachments or [],
+            "resource_attachments": resource_attachments or [],
+            "user_defined_attachment_ids": user_defined_attachment_ids or []
         }
         chat_record_messages: List[ChatMessage] = [ChatMessage(
             session_id=session_id, role=Role.USER, content=user_query,

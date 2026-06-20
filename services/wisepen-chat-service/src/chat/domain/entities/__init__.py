@@ -1,17 +1,18 @@
 # src/chat/domain/entities/__init__.py
 from .message import ChatMessage, MessageModelInfo, Role, ToolCallMessage
-from .session import ChatSession
+from .session import AttachmentRef, ChatSession, ResourceAttachmentRef, TemporaryAttachmentRef
+from .file_storage import StorageRecord, UploadInitResponse
 from .model import ModelType, ModelFamily, ModelScope, Model, ModelProviderMapping
 from .provider import Provider, ProviderScope, ProviderType
+from .resource import ResourceItemInfo, ResourcePermission
 from .skill import Skill, SkillMeta, SkillAssetMeta
 
 __all__ = [
     "ChatMessage", "MessageModelInfo", "Role", "ToolCallMessage",
-    "ChatSession",
-    "ModelType", "ModelFamily", "ModelScope", "Model",
+    "AttachmentRef", "ChatSession", "ResourceAttachmentRef", "TemporaryAttachmentRef",
+    "StorageRecord", "UploadInitResponse",
+    "ModelType", "ModelFamily", "ModelScope", "Model", "ModelProviderMapping",
     "Provider", "ProviderScope", "ProviderType",
-    "ModelProviderMapping",
-    "Skill", 
-    "SkillMeta", 
-    "SkillAssetMeta",
+    "ResourceItemInfo", "ResourcePermission",
+    "Skill", "SkillMeta", "SkillAssetMeta",
 ]
