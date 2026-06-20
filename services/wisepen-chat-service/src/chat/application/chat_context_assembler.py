@@ -172,21 +172,21 @@ class ChatContextAssembler:
                 context_blocks['user_frontend_context'][state["key"]] = state["value"]
 
         # 附件
-        temporary_attachments = [{
+        temp_attachments_context = [{
             'attachment_id': temp_attachment.attachment_id,
             'name': temp_attachment.attachment_name,
             'extension': temp_attachment.extension,
             'size': temp_attachment.file_size // 1024,
         } for temp_attachment in (temp_attachments or [])]
-        resource_attachments = [{
+        resource_attachments_context = [{
             'attachment_id': resource_attachment.attachment_id,
             'name': resource_attachment.attachment_name,
             'resource_type': resource_attachment.resource_type,
         } for resource_attachment in (resource_attachments or [])]
-        if temporary_attachments or resource_attachments or user_defined_attachment_ids:
+        if temp_attachments or resource_attachments or user_defined_attachment_ids:
             context_blocks["session_attachments"] = {
-                "temporary_attachments": temporary_attachments,
-                "resource_attachments": resource_attachments,
+                "temporary_attachments": temp_attachments_context,
+                "resource_attachments": resource_attachments_context,
                 "user_query_attachment_ids": user_defined_attachment_ids or [],
             }
 
