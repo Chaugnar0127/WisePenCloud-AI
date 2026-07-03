@@ -16,7 +16,7 @@ class SkillAssetMeta(BaseModel):
     def from_response(cls, payload: Mapping[str, Any]) -> "SkillAssetMeta":
         return cls(
             id=str(payload.get("id")),
-            path=str(f"{payload.get('path').rstrip("/")}/{payload.get("name")}"),
+            path=str(f"{payload.get('path').rstrip('/')}/{payload.get('name')}"),
             object_key=str(payload.get("objectKey")),
             kind=str(payload.get("assetResourceType")),
             upload_status=str(payload.get("uploadStatus")),
