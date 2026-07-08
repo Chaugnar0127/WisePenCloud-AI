@@ -68,7 +68,7 @@ class LiteLLMAdapter(LLMProvider, TextCompletionProvider):
         formatted_messages = []
         for message in messages:
             # 只回放 LiteLLM 自己保存的 assistant 原生消息，其他 provider payload 只能降级为可见文本
-            if message.role == Role.ASSISTANT and message.model_info.provider_type == ProviderType.LITELLM_OPENAI_COMPATIBLE and message.provider_payload:
+            if message.role == Role.ASSISTANT and message.model_info and message.model_info.provider_type == ProviderType.LITELLM_OPENAI_COMPATIBLE and message.provider_payload:
                 formatted_messages.append(message.provider_payload["message"])
                 continue
             if message.role == Role.TOOL:

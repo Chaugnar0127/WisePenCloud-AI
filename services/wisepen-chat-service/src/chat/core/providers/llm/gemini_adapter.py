@@ -138,7 +138,7 @@ class GeminiAdapter(LLMProvider):
                 contents.append({"role": "user", "parts": [{"text": msg.content or ""}]})
                 continue
             # 如果当前消息是 GEMINI 提供的，且存在 provider_payload，则直接取出
-            if msg.role == Role.ASSISTANT and msg.model_info.provider_type == ProviderType.GOOGLE and msg.provider_payload:
+            if msg.role == Role.ASSISTANT and msg.model_info and msg.model_info.provider_type == ProviderType.GOOGLE and msg.provider_payload:
                 contents.append({
                     "role": "model",
                     "parts": msg.provider_payload["content"]

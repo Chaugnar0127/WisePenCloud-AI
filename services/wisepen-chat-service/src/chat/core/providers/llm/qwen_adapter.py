@@ -145,7 +145,7 @@ class QwenAdapter(LLMProvider):
         result = []
         for msg in messages:
             # 只回放 Qwen 自己保存的 assistant 原生消息，其他 provider payload 只能降级为可见文本
-            if msg.role == Role.ASSISTANT and msg.model_info.provider_type == ProviderType.ALIBABA and msg.provider_payload:
+            if msg.role == Role.ASSISTANT and msg.model_info and msg.model_info.provider_type == ProviderType.ALIBABA and msg.provider_payload:
                 result.append(msg.provider_payload["message"])
                 continue
             if msg.role == Role.TOOL:

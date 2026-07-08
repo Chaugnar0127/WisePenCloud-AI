@@ -155,7 +155,7 @@ class AnthropicAdapter(LLMProvider):
                 })
                 continue
             # 如果当前消息是 ANTHROPIC 提供的，且存在 provider_payload，则直接取出
-            if msg.role == Role.ASSISTANT and msg.model_info.provider_type == ProviderType.ANTHROPIC and msg.provider_payload:
+            if msg.role == Role.ASSISTANT and msg.model_info and msg.model_info.provider_type == ProviderType.ANTHROPIC and msg.provider_payload:
                 anthropic_messages.append({
                     "role": "assistant",
                     "content": msg.provider_payload["content"],
