@@ -6,6 +6,7 @@ from __future__ import annotations
 from typing import Any, Dict, Mapping, Optional
 
 import httpx
+import json as jsonlib
 
 from common.cloud.service_discovery import ServiceDiscovery, LoadBalancingStrategy
 from common.core.constants import SecurityConstants, CommonConstants
@@ -91,7 +92,7 @@ class RpcClient:
         if user_id:
             merged_headers[SecurityConstants.HEADER_USER_ID] = user_id
             merged_headers[SecurityConstants.HEADER_IDENTITY_TYPE] = str(SecurityContextHolder.get_identity_type().code)
-            merged_headers[SecurityConstants.HEADER_GROUP_ROLE_MAP] = json.dumps({
+            merged_headers[SecurityConstants.HEADER_GROUP_ROLE_MAP] = jsonlib.dumps({
                 str(group_id): role.code for group_id, role in SecurityContextHolder.get_group_role_map().items()
             }, ensure_ascii=False)
 
