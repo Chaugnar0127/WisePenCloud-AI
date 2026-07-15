@@ -14,6 +14,7 @@ from chat.application.tools.core.mcp.remote_tool import McpRemoteTool
 from chat.core.config.app_settings import settings
 from chat.domain.entities.mcp_tool_server_config import McpToolDescriptor
 from chat.service_client import McpServiceClient
+from common.logger import error
 
 _SYSTEM_TOOL_CONFIGS: List[dict[str, Any]] = [{
         "tool_name": "create_skill_info",
@@ -83,7 +84,8 @@ class SystemMcpToolCatalog:
             # 重新拉取缓存
             try:
                 descriptors = await self._mcp_service_client.list_tools()
-            except Exception:
+            except Exception as e:
+                error("load system mcp tools failed.", exc=e)
                 return {}
             self._mcp_tools_cache_update_time = now
 

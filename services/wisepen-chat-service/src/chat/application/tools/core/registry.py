@@ -99,7 +99,7 @@ class ToolRegistry:
 
         # 收集用户配置的 MCP 工具
         if self._mcp_tool_catalog is not None:
-            user_tools = await self._mcp_tool_catalog.load_user_tools(user_id, occupied_names=set(tools))
+            user_tools = await self._mcp_tool_catalog.load_user_mcp_tools(user_id)
             for name, tool in user_tools.items():
                 if name not in tools:
                     tools[name] = tool
@@ -132,7 +132,6 @@ class ToolRegistry:
                 continue
 
             filtered_tools[name] = tool
-
 
         return ToolScope(
             tools=filtered_tools,

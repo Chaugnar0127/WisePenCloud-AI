@@ -15,7 +15,7 @@ from common.security.context import SecurityContextHolder
 
 
 _DEFAULT_SERVICE_NAME = "wisepen-mcp-service"
-_MCP_PATH = "/mcp"
+_MCP_PATH = "/mcp/"
 
 
 class McpServiceClient:
@@ -52,7 +52,10 @@ class McpServiceClient:
             name = item.name.strip()
             description = item.description
             if not name or not description: continue
-            descriptors.append(McpToolDescriptor(name=name, description=description, input_schema=item.inputSchema.model_dump(by_alias=True)))
+            input_schema = item.inputSchema
+            if hasattr(input_schema, "model_dump"):
+                input_schema = input_schema.model_dump(by_alias=True)
+            descriptors.append(McpToolDescriptor(name=name, description=description, input_schema=input_schema))
         return descriptors
 
     async def call_tool(

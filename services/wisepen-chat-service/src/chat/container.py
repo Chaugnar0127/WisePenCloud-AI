@@ -153,7 +153,7 @@ class Container(containers.DeclarativeContainer):
     )
     system_mcp_tool_catalog = providers.Singleton(
         SystemMcpToolCatalog,
-        mcp_client=mcp_service_client,
+        mcp_service_client=mcp_service_client,
     )
 
     # OssFileLoader
