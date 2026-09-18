@@ -16,7 +16,7 @@ from chat.domain.entities import ChatMessage, Role
 from chat.application.llm_provider_resolver import LLMProviderResolver
 from chat.application.token_counter import TokenCounter
 from chat.core.providers import OssFileLoader
-from chat.domain.interfaces.llm import TextCompletionProvider
+from chat.domain.interfaces.llm import TextCompletionProvider, TokenUsage
 from chat.domain.interfaces.memory import MemoryProvider
 from chat.domain.repositories import SessionRepository, MessageRepository, HotContextRepository, ModelRepository, \
     ProviderRepository, SuspendedChatRepository
@@ -49,7 +49,7 @@ class ChatTurnContext:
     tool_scope: ToolScope = None
     messages_for_llm: list[ChatMessage] = field(default_factory=list)
     chat_record_messages: list[ChatMessage] = field(default_factory=list)
-    token_usage: int = 0
+    token_usage: TokenUsage = field(default_factory=TokenUsage)
 
 class ChatTurnCoordinator:
     """
@@ -131,7 +131,7 @@ class ChatTurnCoordinator:
             messages_for_llm=list(suspended_chat.context.messages_for_llm),
             # 挂起前的消息和 token 由首次批次处理；恢复批次只记录新增工具结果和回复。
             chat_record_messages=[],
-            token_usage=0,
+            token_usage=TokenUsage(),
         )
         await self._ensure_billable_chat_allowed(
             user_id=user_id,
@@ -345,7 +345,7 @@ class ChatTurnCoordinator:
             memory_policy=memory_policy,
         )
 
-        chat_turn_context.token_usage = 0
+        chat_turn_context.token_usage = TokenUsage()
         async for event in self.query_llm(
                 chat_turn_context=chat_turn_context,
                 client_tool_results=None,
@@ -378,7 +378,7 @@ class ChatTurnCoordinator:
             ):
                 # QueryLoopRuntime 产出的事件如果是 StepFinishEvent 额外处理消息累积
                 if isinstance(event, StepFinishEvent):
-                    chat_turn_context.token_usage += event.token_usage # 计费
+                    chat_turn_context.token_usage.add(event.token_usage) # 计费
                     if not event.is_finished:
                         # 向 chat_record_messages 追加中间消息（Tool Calls）
                         chat_turn_context.chat_record_messages.extend(event.intermediate_messages)
