@@ -101,7 +101,7 @@ async def list_providers(
 @router.get(
     "/model/getProvider", response_model=R[ProviderDetailResponse], summary="管理员：查询供应商详情及关联模型",
     description="""
-- 请求：provider_id，通常从 listProviders 的结果中选取。
+- 请求：provider_id。
 - 约束：仅平台 ADMIN 可读；个人资源按不存在处理。
 - 失败：系统供应商不存在返回 404。
 - 响应：返回脱敏的 provider 和关联 models，包含配置版本和可用性。
