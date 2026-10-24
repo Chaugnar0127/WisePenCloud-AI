@@ -18,6 +18,7 @@ from chat.core.providers import (
     IflytekSpeechProvider,
 )
 from chat.application.llm_provider_resolver import LLMProviderResolver
+from chat.application.admin_model_management import AdminModelManagement
 from chat.application.token_counter import TokenCounter
 from chat.core.persistence import (
     MongoSessionRepository,
@@ -25,6 +26,7 @@ from chat.core.persistence import (
     MongoModelRepository,
     MongoMcpServerConfigRepository,
     MongoProviderRepository,
+    MongoAdminModelRepository,
     MongoToolConfigRepository,
     MongoSuspendedChatRepository,
     RedisHotContext,
@@ -120,6 +122,7 @@ class Container(containers.DeclarativeContainer):
     message_repo = providers.Singleton(MongoMessageRepository)
     model_repo = providers.Singleton(MongoModelRepository)
     provider_repo = providers.Singleton(MongoProviderRepository)
+    admin_model_repo = providers.Singleton(MongoAdminModelRepository)
     tool_config_repo = providers.Singleton(MongoToolConfigRepository)
     suspended_chat_repo = providers.Singleton(MongoSuspendedChatRepository)
     mcp_server_config_repo = providers.Singleton(MongoMcpServerConfigRepository)
@@ -309,6 +312,11 @@ class Container(containers.DeclarativeContainer):
     )
 
     # Application 层组件
+    admin_model_management = providers.Singleton(
+        AdminModelManagement,
+        repository=admin_model_repo,
+        default_model_id=settings.DEFAULT_MODEL_ID,
+    )
     chat_turn_coordinator = providers.Factory(
         ChatTurnCoordinator,
         llm_provider_resolver=llm_provider_resolver,

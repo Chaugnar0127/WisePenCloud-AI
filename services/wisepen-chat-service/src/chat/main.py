@@ -30,6 +30,7 @@ from chat.container import container  # noqa: F401 — 触发 dependency_injecto
 from chat.core.config.app_settings import settings
 from chat.api.router import api_router
 from chat.api.endpoints import attachment as attachment_endpoints
+from chat.api.endpoints import admin as admin_endpoints
 from chat.api.endpoints import chat as chat_endpoints
 from chat.api.endpoints import session as session_endpoints
 from chat.api.endpoints import memory as memory_endpoints
@@ -37,6 +38,7 @@ from chat.api.endpoints import model as model_endpoints
 from chat.api.endpoints import speech as speech_endpoints
 from chat.api.endpoints import tool as tool_endpoints
 from chat.domain.entities import ChatSession, ChatMessage, Provider, Model, ModelProviderMapping, UserToolConfig, UserMcpServerConfig, SuspendedChat
+from chat.domain.entities.admin_audit import AdminAuditLog
 
 
 # 避免 HTTP 代理拦截内部中间件请求。
@@ -58,7 +60,7 @@ async def lifespan(app: FastAPI):
     mongo_client = AsyncMongoClient(settings.MONGODB_URL)
     await init_beanie(
         database=mongo_client[settings.MONGODB_DB_NAME],
-        document_models=[ChatSession, ChatMessage, Provider, Model, ModelProviderMapping, UserToolConfig, UserMcpServerConfig, SuspendedChat],
+        document_models=[ChatSession, ChatMessage, Provider, Model, ModelProviderMapping, UserToolConfig, UserMcpServerConfig, SuspendedChat, AdminAuditLog],
     )
     info("beanie initialized.", db=settings.MONGODB_DB_NAME)
 
@@ -111,8 +113,10 @@ async def lifespan(app: FastAPI):
         await nacos_client_manager.deregister_instance()
     except Exception as e:
         error("nacos instance deregister failed.", exc=e)
+    await mongo_client.close()
 
 container.wire(modules=[
+    admin_endpoints,
     attachment_endpoints,
     chat_endpoints,
     session_endpoints,
