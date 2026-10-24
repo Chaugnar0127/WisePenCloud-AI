@@ -62,7 +62,7 @@ from chat.application.tools.session_tools.cached_tool_output_tools import (
     CachedToolOutputSearchBySemanticsTool,
 )
 from chat.core.config.nacos import nacos_client_manager
-from chat.service_client import FileStorageClient, AIAssetClient, McpServiceClient, ResourceClient
+from chat.service_client import FileStorageClient, AIAssetClient, McpServiceClient, ResourceClient, SystemClient
 from common.cloud.service_discovery import ServiceDiscovery
 from common.http.rpc_client import RpcClient
 from common.kafka.producer import KafkaProducerClient
@@ -174,6 +174,11 @@ class Container(containers.DeclarativeContainer):
     resource_client = providers.Singleton(
         ResourceClient,
         rpc=rpc_client,
+    )
+    system_client = providers.Singleton(
+        SystemClient,
+        rpc=rpc_client,
+        timeout=settings.RPC_DEFAULT_TIMEOUT,
     )
     mcp_service_client = providers.Singleton(
         McpServiceClient,

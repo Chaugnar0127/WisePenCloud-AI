@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated, Any, ClassVar, Literal, Self
+from typing import Annotated, ClassVar, Literal, Self
 from urllib.parse import urlsplit
 
 from beanie import PydanticObjectId
@@ -174,21 +174,6 @@ class MappingListResponse(BaseModel):
 class AdminWriteResponse(BaseModel):
     target_id: str
     config_version: int
-    audit_id: str
+    request_id: str = Field(description="服务端生成的请求 ID，可用于检索操作日志")
     model_id: str | None = None
     effective_from: Literal["next_resolution"] = "next_resolution"
-
-
-class AdminAuditResponse(BaseModel):
-    id: str
-    actor_user_id: str
-    action: str
-    target_type: str
-    target_id: str
-    changed_fields: list[str]
-    before_version: int | None
-    after_version: int
-    reason: str
-    request_id: str
-    changes: dict[str, Any]
-    created_at: datetime

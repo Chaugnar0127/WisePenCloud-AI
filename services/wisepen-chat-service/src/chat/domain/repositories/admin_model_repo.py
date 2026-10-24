@@ -3,9 +3,8 @@ from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
-from beanie import Document, PydanticObjectId
+from beanie import PydanticObjectId
 
-from chat.domain.entities.admin_audit import AdminAuditLog
 from chat.domain.entities.model import Model, ModelProviderMapping
 from chat.domain.entities.provider import Provider
 from chat.domain.error_codes import ChatErrorCode
@@ -13,7 +12,6 @@ from chat.domain.error_codes import ChatErrorCode
 
 AdminResource = TypeVar("AdminResource", Provider, Model, ModelProviderMapping)
 AdminConfig = TypeVar("AdminConfig", Provider, Model)
-DocumentType = TypeVar("DocumentType", bound=Document)
 WriteResult = TypeVar("WriteResult")
 
 
@@ -25,7 +23,7 @@ class AdminModelInfo:
 
 
 class AdminModelRepository(ABC):
-    """系统配置仓储；session 由 write 创建，并在配置与审计写入间传递。"""
+    """系统配置仓储；session 由 write 创建，在相关配置文档的写入间传递。"""
 
     @abstractmethod
     async def get(
@@ -55,7 +53,7 @@ class AdminModelRepository(ABC):
     ) -> list[Model]: pass
 
     @abstractmethod
-    async def insert(self, document: DocumentType, session: Any) -> DocumentType: pass
+    async def insert(self, document: AdminResource, session: Any) -> AdminResource: pass
 
     @abstractmethod
     async def update_config(
@@ -74,8 +72,3 @@ class AdminModelRepository(ABC):
     async def write(
         self, operation: Callable[[Any], Awaitable[WriteResult]], duplicate_code: ChatErrorCode,
     ) -> WriteResult: pass
-
-    @abstractmethod
-    async def list_audits(
-        self, *, page: int, size: int, filters: dict[str, Any],
-    ) -> tuple[list[AdminAuditLog], int]: pass

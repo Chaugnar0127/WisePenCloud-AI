@@ -1,11 +1,12 @@
-from dataclasses import dataclass
+import json
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
 from beanie import PydanticObjectId
 from pydantic import SecretStr
 
-from chat.domain.entities.admin_audit import AdminAuditLog
 from chat.domain.entities.model import Model, ModelProviderMapping
 from chat.domain.entities.provider import Provider
 from chat.domain.error_codes import ChatErrorCode
@@ -13,6 +14,8 @@ from chat.domain.model_configuration import mask_api_key, supports_model_family
 from chat.domain.repositories.admin_model_repo import AdminModelInfo, AdminModelRepository
 from common.core.domain import ResultCode
 from common.core.exceptions import ServiceException
+from common.logger import info
+
 
 @dataclass(frozen=True)
 class AdminActor:
@@ -25,12 +28,13 @@ class AdminActor:
 class AdminWriteResult:
     target_id: str
     config_version: int
-    audit_id: str
+    request_id: str
+    log_fields: dict[str, Any] = field(repr=False)
     model_id: str | None = None
 
 
 class AdminModelManagement:
-    """系统模型配置操作；操作者与资源 owner 分离，所有写入和审计一起提交。"""
+    """系统模型配置操作；操作者与资源 owner 分离，事务提交后记录操作日志。"""
 
     def __init__(self, repository: AdminModelRepository, default_model_id: str):
         self.repo = repository
@@ -72,9 +76,9 @@ class AdminModelManagement:
             provider = Provider(**fields, is_active=False, config_updated_at=datetime.now(timezone.utc))
             provider.api_key_fingerprint = mask_api_key(provider.api_key)
             await self.repo.insert(provider, session)
-            return await self._audit("create_provider", None, provider, fields, actor, session)
+            return self._build_change("create_provider", None, provider, fields, actor)
 
-        return await self.repo.write(operation, ChatErrorCode.PROVIDER_ALREADY_EXISTS)
+        return await self._write(operation, ChatErrorCode.PROVIDER_ALREADY_EXISTS)
 
     async def update_provider(
         self, provider_id: PydanticObjectId, expected_version: int,
@@ -92,9 +96,9 @@ class AdminModelManagement:
                 for model in await self.repo.models_for(mappings, session):
                     model = await self.repo.update_config(model, model.config_version, {}, session)
                     await self._check_model(model, session, require_available=False)
-            return await self._audit("update_provider", before, after, updates, actor, session)
+            return self._build_change("update_provider", before, after, updates, actor)
 
-        return await self.repo.write(operation, ChatErrorCode.PROVIDER_ALREADY_EXISTS)
+        return await self._write(operation, ChatErrorCode.PROVIDER_ALREADY_EXISTS)
 
     async def rotate_provider_key(
         self, provider_id: PydanticObjectId, expected_version: int, api_key: SecretStr, actor: AdminActor,
@@ -105,18 +109,18 @@ class AdminModelManagement:
             before = await self.repo.get(Provider, provider_id, session)
             updates = {"api_key": key, "api_key_fingerprint": mask_api_key(key)}
             after = await self.repo.update_config(before, expected_version, updates, session)
-            return await self._audit("rotate_provider_api_key", before, after, updates, actor, session)
+            return self._build_change("rotate_provider_api_key", before, after, updates, actor)
 
-        return await self.repo.write(operation, ChatErrorCode.PROVIDER_ALREADY_EXISTS)
+        return await self._write(operation, ChatErrorCode.PROVIDER_ALREADY_EXISTS)
 
     async def create_model(self, fields: dict[str, Any], actor: AdminActor) -> AdminWriteResult:
         async def operation(session: Any) -> AdminWriteResult:
             model = Model(**fields, is_active=False)
             self._check_limits(model)
             await self.repo.insert(model, session)
-            return await self._audit("create_model", None, model, fields, actor, session)
+            return self._build_change("create_model", None, model, fields, actor)
 
-        return await self.repo.write(operation, ChatErrorCode.MODEL_ALREADY_EXISTS)
+        return await self._write(operation, ChatErrorCode.MODEL_ALREADY_EXISTS)
 
     async def update_model(
         self, model_id: PydanticObjectId, expected_version: int, updates: dict[str, Any], actor: AdminActor,
@@ -127,9 +131,9 @@ class AdminModelManagement:
             before = await self.repo.get(Model, model_id, session)
             after = await self.repo.update_config(before, expected_version, updates, session)
             await self._check_model(after, session, require_available=after.is_active)
-            return await self._audit("update_model", before, after, updates, actor, session)
+            return self._build_change("update_model", before, after, updates, actor)
 
-        return await self.repo.write(operation, ChatErrorCode.MODEL_ALREADY_EXISTS)
+        return await self._write(operation, ChatErrorCode.MODEL_ALREADY_EXISTS)
 
     async def create_mapping(
         self, model_id: PydanticObjectId, provider_id: PydanticObjectId, expected_version: int,
@@ -145,12 +149,12 @@ class AdminModelManagement:
             mapping = ModelProviderMapping(model_id=model_id, provider_id=provider_id, **fields)
             await self.repo.insert(mapping, session)
             await self._check_model(model, session, require_available=False)
-            return await self._audit(
-                "create_mapping", None, mapping, fields, actor, session,
+            return self._build_change(
+                "create_mapping", None, mapping, fields, actor,
                 version=model.config_version, before_version=expected_version,
             )
 
-        return await self.repo.write(operation, ChatErrorCode.MODEL_MAPPING_ALREADY_EXISTS)
+        return await self._write(operation, ChatErrorCode.MODEL_MAPPING_ALREADY_EXISTS)
 
     async def update_mapping(
         self, mapping_id: PydanticObjectId, expected_version: int,
@@ -170,12 +174,12 @@ class AdminModelManagement:
                 fields["is_preferred"] = False
             after = await self.repo.update_mapping(mapping_id, fields, session)
             await self._check_model(model, session, require_available=False)
-            return await self._audit(
-                "update_mapping", before, after, fields, actor, session,
+            return self._build_change(
+                "update_mapping", before, after, fields, actor,
                 version=model.config_version, before_version=expected_version,
             )
 
-        return await self.repo.write(operation, ChatErrorCode.MODEL_MAPPING_ALREADY_EXISTS)
+        return await self._write(operation, ChatErrorCode.MODEL_MAPPING_ALREADY_EXISTS)
 
     async def set_preferred(
         self, model_id: PydanticObjectId, mapping_id: PydanticObjectId,
@@ -196,18 +200,25 @@ class AdminModelManagement:
             previous = [str(m.id) for m in mappings if m.is_preferred]
             await self.repo.clear_preferred(model_id, session)
             after = await self.repo.update_mapping(mapping_id, {"is_preferred": True}, session)
-            return await self._audit(
-                "set_preferred_mapping", mapping, after, {"is_preferred": True}, actor, session,
+            return self._build_change(
+                "set_preferred_mapping", mapping, after, {"is_preferred": True}, actor,
                 version=model.config_version, before_version=expected_version,
                 extra_changes={"preferred_mapping_ids": {"before": previous, "after": [str(mapping_id)]}},
             )
 
-        return await self.repo.write(operation, ChatErrorCode.MODEL_MAPPING_ALREADY_EXISTS)
+        return await self._write(operation, ChatErrorCode.MODEL_MAPPING_ALREADY_EXISTS)
 
-    async def list_audits(
-        self, *, page: int, size: int, filters: dict[str, Any],
-    ) -> tuple[list[AdminAuditLog], int]:
-        return await self.repo.list_audits(page=page, size=size, filters=filters)
+    async def _write(
+        self, operation: Callable[[Any], Awaitable[AdminWriteResult]], duplicate_code: ChatErrorCode,
+    ) -> AdminWriteResult:
+        result = await self.repo.write(operation, duplicate_code)
+        # with_transaction 可能重试回调；只在最终提交成功后记录一次。
+        try:
+            info("admin configuration updated.", **result.log_fields)
+        except Exception:
+            # 日志失败不把已经提交的配置修改变成失败响应，也不输出潜在敏感异常。
+            pass
+        return result
 
     @staticmethod
     def _nonempty(updates: dict[str, Any]) -> None:
@@ -243,16 +254,17 @@ class AdminModelManagement:
         if require_available and not available:
             raise ServiceException(ChatErrorCode.MODEL_CONFIGURATION_INVALID)
 
-    async def _audit(
-        self, action: str, before: Provider | Model | ModelProviderMapping | None,
+    @staticmethod
+    def _build_change(
+        action: str, before: Provider | Model | ModelProviderMapping | None,
         after: Provider | Model | ModelProviderMapping, fields: dict[str, Any],
-        actor: AdminActor, session: Any, *, version: int | None = None,
+        actor: AdminActor, *, version: int | None = None,
         before_version: int | None = None, extra_changes: dict[str, Any] | None = None,
     ) -> AdminWriteResult:
         target_type = {Provider: "provider", Model: "model", ModelProviderMapping: "mapping"}[type(after)]
-        old = before.model_dump(mode="json") if before else {}
-        new = after.model_dump(mode="json")
-        # 从允许修改的字段构建摘要，绝不序列化完整 Provider 到审计或日志。
+        old = before.model_dump(mode="json", include=set(fields)) if before else {}
+        new = after.model_dump(mode="json", include=set(fields))
+        # 只从允许修改的字段构建脱敏摘要，不将完整 Provider 或请求体写入日志。
         changes = {}
         for field in fields:
             if field == "api_key":
@@ -261,28 +273,37 @@ class AdminModelManagement:
                 changes[field] = {"before": old.get(field), "after": new.get(field)}
         changes.update(extra_changes or {})
         reason = actor.reason
-        for key in (old.get("api_key"), new.get("api_key")):
+        for document in (before, after):
+            key = document.api_key if isinstance(document, Provider) else None
             if key:
                 reason = reason.replace(key, "[REDACTED]")
+                for change in changes.values():
+                    for side, value in change.items():
+                        if isinstance(value, str):
+                            change[side] = value.replace(key, "[REDACTED]")
         version = version if version is not None else after.config_version
         if before_version is None and before is not None:
             before_version = before.config_version
-        audit = AdminAuditLog(
-            actor_user_id=actor.user_id,
-            action=action,
-            target_type=target_type,
-            target_id=str(after.id),
-            changed_fields=sorted(changes),
-            before_version=before_version,
-            after_version=version,
-            reason=reason,
-            request_id=actor.request_id,
-            changes=changes,
-        )
-        await self.repo.insert(audit, session)
+        target_id = str(after.id)
+        model_id = str(after.model_id) if isinstance(after, ModelProviderMapping) else None
+        # 复杂字段显式转成 JSON 字符串，便于现有 OTel attributes 链路存储和检索。
+        log_fields = {
+            "operUserId": actor.user_id,
+            "action": action,
+            "targetType": target_type,
+            "targetId": target_id,
+            "modelId": model_id,
+            "beforeVersion": before_version,
+            "afterVersion": version,
+            "reason": reason,
+            "requestId": actor.request_id,
+            "changedFields": json.dumps(sorted(changes), ensure_ascii=False),
+            "changes": json.dumps(changes, ensure_ascii=False),
+        }
         return AdminWriteResult(
-            target_id=str(after.id),
+            target_id=target_id,
             config_version=version,
-            audit_id=str(audit.id),
-            model_id=str(after.model_id) if isinstance(after, ModelProviderMapping) else None,
+            request_id=actor.request_id,
+            log_fields=log_fields,
+            model_id=model_id,
         )

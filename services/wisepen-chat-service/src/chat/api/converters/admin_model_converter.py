@@ -1,10 +1,8 @@
 from chat.api.schemas.admin_model import (
-    AdminAuditResponse,
     AdminMappingResponse,
     AdminModelResponse,
     AdminProviderResponse,
 )
-from chat.domain.entities.admin_audit import AdminAuditLog
 from chat.domain.entities.model import Model, ModelProviderMapping
 from chat.domain.entities.provider import Provider
 from chat.domain.model_configuration import mask_api_key, supports_model_family
@@ -79,7 +77,3 @@ def to_model_response(info: AdminModelInfo) -> AdminModelResponse:
         mappings=mapping_responses,
         is_available=model.is_active and any(m.is_available for m in mapping_responses),
     )
-
-
-def to_audit_response(audit: AdminAuditLog) -> AdminAuditResponse:
-    return AdminAuditResponse(id=str(audit.id), **audit.model_dump(exclude={"id", "revision_id"}))

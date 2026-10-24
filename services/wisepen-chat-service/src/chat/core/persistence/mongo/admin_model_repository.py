@@ -1,4 +1,4 @@
-"""管理员配置持久化：限定系统资源，原子版本更新及事务审计。"""
+"""管理员配置持久化：限定系统资源，原子版本更新及配置事务。"""
 import re
 from collections.abc import Awaitable, Callable, Iterable
 from datetime import datetime, timezone
@@ -11,7 +11,6 @@ from pymongo.errors import DuplicateKeyError, OperationFailure
 from pymongo.read_concern import ReadConcern
 from pymongo.write_concern import WriteConcern
 
-from chat.domain.entities.admin_audit import AdminAuditLog
 from chat.domain.entities.model import Model, ModelProviderMapping
 from chat.domain.entities.provider import Provider
 from chat.domain.error_codes import ChatErrorCode
@@ -19,7 +18,6 @@ from chat.domain.repositories.admin_model_repo import (
     AdminConfig,
     AdminModelRepository,
     AdminResource,
-    DocumentType,
     WriteResult,
 )
 from common.core.exceptions import ServiceException
@@ -93,7 +91,7 @@ class MongoAdminModelRepository(AdminModelRepository):
             {**self._scope(Model), "_id": {"$in": list({m.model_id for m in mappings})}}, session=session,
         ).sort("+_id").to_list()
 
-    async def insert(self, document: DocumentType, session: Any) -> DocumentType:
+    async def insert(self, document: AdminResource, session: Any) -> AdminResource:
         return await document.insert(session=session)
 
     async def update_config(
@@ -152,13 +150,3 @@ class MongoAdminModelRepository(AdminModelRepository):
             if exc.code in (112, 251):
                 raise ServiceException(ChatErrorCode.CONFIG_VERSION_CONFLICT) from None
             raise
-
-    async def list_audits(
-        self, *, page: int, size: int, filters: dict[str, Any],
-    ) -> tuple[list[AdminAuditLog], int]:
-        total = await AdminAuditLog.find(filters).count()
-        items = await (
-            AdminAuditLog.find(filters).sort("-created_at", "-_id")
-            .skip((page - 1) * size).limit(size).to_list()
-        )
-        return items, total
